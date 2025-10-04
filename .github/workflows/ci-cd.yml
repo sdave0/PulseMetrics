@@ -30,7 +30,15 @@ jobs:
         run: npm ci
       
       - name: Run tests
-        run: npm test || echo "No tests found, would add tests in a real project"
+        run: npm test -- --json --outputFile=test-results.json || echo "Tests failed or no tests found"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.json
+          retention-days: 1
 
   lint:
     name: Static Code Analysis
@@ -69,7 +77,15 @@ jobs:
         run: npm ci
       
       - name: Build project
-        run: npm run build
+        run: npm run build > build-log.txt 2>&1
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build-log.txt
+          retention-days: 1
       
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
