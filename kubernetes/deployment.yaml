@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: tic-tac-toe
-        image: ghcr.io/sdave0/PulseMetrics:sha-a3419ad28c04ee20386fa8ed9d509d311c869599
+        image: ghcr.io/sdave0/PulseMetrics:sha-0c304ca1a982a936962170e942cf56ff75c0ee40
         # Image will be automatically updated by CI/CD pipeline
         imagePullPolicy: Always
         ports:
