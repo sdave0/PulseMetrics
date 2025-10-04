@@ -83,6 +83,7 @@ jobs:
           ls -la dist/ || echo "No dist directory"
       
       - name: Analyze workflow run
+        id: analyze_step
         uses: actions/github-script@v7
         with:
           script: |
@@ -193,3 +194,15 @@ jobs:
             // Write the summary
             await core.summary.addRaw(summary).write();
             console.log('Pipeline profile summary created successfully!');
+
+            // Set the summary as an output
+            core.setOutput("summary_data", summary);
+
+      - name: Send Summary to Webhook
+        if: success()
+        env:
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          SUMMARY_DATA: ${{ steps.analyze_step.outputs.summary_data }}
+        run: |
+          PAYLOAD=$(jq -n --arg content "$SUMMARY_DATA" '{ "text": $content }')
+          curl -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "$WEBHOOK_URL"
