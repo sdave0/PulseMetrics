@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Progress files
+progressfile.md
+
+# Environment files
+/metrics-collector/.env

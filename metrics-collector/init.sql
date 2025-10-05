@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS workflow_runs (
+    run_id BIGINT PRIMARY KEY,
+    run_number INT,
+    workflow_name VARCHAR(255),
+    html_url TEXT,
+    status VARCHAR(255),
+    trigger_event VARCHAR(255),
+    branch VARCHAR(255),
+    duration_seconds INT,
+    created_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    commit_sha VARCHAR(255),
+    commit_message TEXT,
+    commit_author VARCHAR(255),
+    jobs JSONB,
+    test_summary JSONB,
+    build_analysis JSONB,
+    artifacts JSONB,
+    received_at TIMESTAMPTZ DEFAULT NOW()
+);

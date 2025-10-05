@@ -17,6 +17,14 @@ The pipeline consists of the following jobs:
 
 This project includes a separate workflow that profiles the main CI/CD pipeline. After every successful run of the CI/CD pipeline on the `main` branch, the profiler workflow runs and generates a summary of the pipeline's execution, including job durations, test results, and cache performance. The summary is appended to the CI/CD pipeline run.
 
+## Metrics Collector Service
+
+This project includes a local backend service (`/metrics-collector`) designed to receive and store metrics from the CI/CD pipeline runs.
+
+*   **Tech Stack:** Node.js, Express, TypeScript, Postgres
+*   **Functionality:** Provides a `/metrics` endpoint that accepts JSON payloads from the `profiler` workflow.
+*   **Database:** The service is configured via `docker-compose.yml` to connect to a local Postgres database running in Docker. It automatically creates the necessary `workflow_runs` table to store the incoming data.
+
 ## Workflow Triggers
 
 *   **Push** to `main` or `develop`.
@@ -29,4 +37,3 @@ This project includes a separate workflow that profiles the main CI/CD pipeline.
 *   **Orchestration:** Kubernetes
 *   **Frontend:** React, TypeScript
 *   **Security:** Trivy
-
