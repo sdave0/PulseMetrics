@@ -47,7 +47,15 @@ app.post('/metrics', async (req: Request, res: Response) => {
       commit_message, commit_author, jobs, test_summary, build_analysis, artifacts
     )
     VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-    ON CONFLICT (run_id) DO NOTHING; // Prevents duplicates
+    ON CONFLICT (run_id) DO UPDATE SET
+      status = EXCLUDED.status,
+      completed_at = EXCLUDED.completed_at,
+      duration_seconds = EXCLUDED.duration_seconds,
+      jobs = EXCLUDED.jobs,
+      test_summary = EXCLUDED.test_summary,
+      build_analysis = EXCLUDED.build_analysis,
+      artifacts = EXCLUDED.artifacts,
+      received_at = NOW();
   `;
 
   const values = [
