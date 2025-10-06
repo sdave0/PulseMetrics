@@ -5,6 +5,7 @@ on:
     workflows: ["CI/CD Pipeline"]
     types:
       - completed
+  workflow_dispatch:
 
 jobs:
   test-trigger:
@@ -12,3 +13,13 @@ jobs:
     steps:
       - name: Test Trigger
         run: echo "Trigger test workflow ran successfully!"
+
+  test-webhook:
+    if: github.event_name == 'workflow_dispatch' # Only run this job when manually triggered
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Test Webhook
+        run: |
+          curl -X POST -H "Content-Type: application/json" \
+          -d '{"message": "Webhook test successful!", "source": "Trigger Test Workflow"}' \
+          "${{ secrets.WEBHOOK_URL }}"
