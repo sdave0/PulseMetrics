@@ -1,39 +1,38 @@
-# CI/CD Pipeline for a Containerized Web Application
+# Pulse: A CI/CD Pipeline Analytics Dashboard
 
-## Overview
+Pulse is an analytics platform that provides deep insights into the performance and health of CI/CD pipelines. It monitors a sample CI/CD workflow, gathers detailed metrics, and visualizes them through a comprehensive dashboard to help teams identify trends, bottlenecks, and anomalies.
 
-This repository contains a CI/CD pipeline for building, testing, and deploying a containerized React application to a Kubernetes cluster. The pipeline is implemented using GitHub Actions.
+## Key Features
 
-## CI/CD Workflow
+### Advanced Analytics Dashboard
+The core of Pulse is its web-based dashboard, which provides a rich, interactive interface for exploring pipeline metrics.
 
-The pipeline consists of the following jobs:
+*   **Pipeline Anomaly Detection:** Automatically flags pipeline runs that are significantly slower than the rolling average, helping to spot performance regressions at a glance.
+*   **Job-Level Analysis:**
+    *   **Performance Trends:** A historical, multi-line chart visualizes the duration of each individual job over time, making it easy to see which parts of the pipeline are getting slower.
+    *   **Breakdown of Recent Runs:** A detailed table analyzes the most recent pipeline run, comparing each job's duration against its historical average.
+*   **Robust Performance Metrics:** The dashboard includes high-level statistics like success rate and median run duration, providing a more accurate view of typical performance by resisting outliers.
 
-*   **Test & Lint:** Performs unit testing and static code analysis.
-*   **Build:** Creates a production build of the React application.
-*   **Docker Build & Push:** Builds and pushes a Docker image to the GitHub Container Registry, including a vulnerability scan with Trivy.
-*   **Deploy:** Updates the Kubernetes deployment with the new image tag upon pushes to the `main` branch.
+### Automated Data Collection
+A resilient data collection system works behind the scenes to gather metrics from every pipeline run.
 
-## Pipeline Profiler
+*   **Metrics Collector Service:** A Node.js backend service that receives, stores, and serves pipeline data via a REST API.
+*   **Automated Profiler:** A dedicated GitHub Actions workflow runs after every pipeline completion to extract detailed job-level timings and other metadata.
 
-This project includes a separate workflow that profiles the main CI/CD pipeline. After every successful run of the CI/CD pipeline on the `main` branch, the profiler workflow runs and generates a summary of the pipeline's execution, including job durations, test results, and cache performance. The summary is appended to the CI/CD pipeline run.
+### Monitored CI/CD Pipeline
+The project includes a sample CI/CD pipeline that the Pulse dashboard monitors. This workflow builds, tests, and deploys a containerized web application to demonstrate a real-world use case.
 
-## Metrics Collector Service
+## How It Works
 
-This project includes a local backend service (`/metrics-collector`) designed to receive and store metrics from the CI/CD pipeline runs.
-
-*   **Tech Stack:** Node.js, Express, TypeScript, Postgres
-*   **Functionality:** Provides a `/metrics` endpoint that accepts JSON payloads from the `profiler` workflow.
-*   **Database:** The service is configured via `docker-compose.yml` to connect to a local Postgres database running in Docker. It automatically creates the necessary `workflow_runs` table to store the incoming data.
-
-## Workflow Triggers
-
-*   **Push** to `main` or `develop`.
-*   **Pull Request** to `main` or `develop`.
+1.  A **CI/CD Pipeline** (GitHub Actions) runs when code is pushed.
+2.  Upon completion, a **Profiler Workflow** is triggered, which gathers detailed metrics about the run.
+3.  The Profiler sends this data to the **Metrics Collector** backend, which stores it in a PostgreSQL database.
+4.  The **Dashboard** (a React application) queries the backend API to fetch the data and display it through its various analytical charts and tables.
 
 ## Technology Stack
 
+*   **Frontend:** React, TypeScript, Vite, Recharts
+*   **Backend:** Node.js, Express, TypeScript
+*   **Database:** PostgreSQL
 *   **CI/CD:** GitHub Actions
 *   **Containerization:** Docker
-*   **Orchestration:** Kubernetes
-*   **Frontend:** React, TypeScript
-*   **Security:** Trivy
