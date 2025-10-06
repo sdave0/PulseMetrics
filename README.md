@@ -2,8 +2,8 @@
 
 Pulse is an analytics dashboard for monitoring the performance and health of CI/CD pipelines. It automatically gathers detailed metrics from every workflow run and visualizes them to help you identify trends, bottlenecks, and performance regressions.
 
-![Dashboard Overview - 1](docs/images/run6-p1.png)
-![Dashboard Overview - 2](docs/images/run6-p2.png)
+![Dashboard Overview - 1](docs/run6-p1.png)
+![Dashboard Overview - 2](docs/run6-p2.png)
 
 ## Key Features
 
