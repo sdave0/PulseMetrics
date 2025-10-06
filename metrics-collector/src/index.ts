@@ -199,6 +199,12 @@ app.get('/api/runs/duration-analysis', async (req: Request, res: Response) => {
   }
 });
 
+interface Job {
+  name: string;
+  status: string;
+  duration_seconds: number;
+}
+
 // Endpoint for job duration breakdown of the most recent run
 app.get('/api/jobs/breakdown', async (req: Request, res: Response) => {
   const historySize = 5;
@@ -242,7 +248,7 @@ app.get('/api/jobs/breakdown', async (req: Request, res: Response) => {
     }
 
     // 4. Build the breakdown for the most recent run
-    const breakdown = mostRecentRun.jobs.map((job: any) => {
+    const breakdown = mostRecentRun.jobs.map((job: Job) => {
       const historicalAvg = historicalAverages[job.name];
       let percentChange = null;
       let isAnomaly = false;
@@ -288,7 +294,7 @@ app.get('/api/jobs/trends', async (req: Request, res: Response) => {
 
     const jobNames = new Set<string>();
     const chartData = runs.map(run => {
-      const runData: { [key: string]: any } = {
+      const runData: { [key: string]: string | number } = {
         name: new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ` (#${run.run_number})`,
       };
 

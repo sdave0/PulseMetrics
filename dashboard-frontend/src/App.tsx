@@ -43,8 +43,14 @@ interface JobBreakdownData {
 }
 
 interface JobTrendsData {
-  chartData: any[];
+  chartData: Array<Record<string, string | number>>;
   jobNames: string[];
+}
+
+interface CustomizedDotProps {
+  cx?: number;
+  cy?: number;
+  payload?: AnomalyData;
 }
 
 // --- Main App Component ---
@@ -100,9 +106,9 @@ function App() {
     </div>
   );
 
-  const CustomizedDot = (props: any) => {
+  const CustomizedDot = (props: CustomizedDotProps) => {
     const { cx, cy, payload } = props;
-    if (payload.is_anomaly) {
+    if (payload && payload.is_anomaly) {
       return <Dot cx={cx} cy={cy} r={6} stroke="#ff4757" fill="#ff6b81" />;
     }
     return <Dot cx={cx} cy={cy} r={4} fill="#54a0ff" />;
