@@ -169,15 +169,19 @@ app.get('/api/runs/duration-analysis', async (req: Request, res: Response) => {
       let rollingAvg = null;
       let is_anomaly = false;
 
-      // We need at least `windowSize` previous runs to calculate the average
+      // Calculate rolling average from the start of the runs
+      const window = allRuns.slice(0, index + 1);
+      const sum = window.reduce((acc, cur) => acc + cur.duration_seconds, 0);
+      rollingAvg = sum / (index + 1);
+
+      // We need at least `windowSize` previous runs to check for anomaly
       if (index >= windowSize) {
-        // Get the slice of runs for the current window
-        const window = allRuns.slice(index - windowSize, index);
-        const sum = window.reduce((acc, cur) => acc + cur.duration_seconds, 0);
-        rollingAvg = sum / windowSize;
+        const anomalyWindow = allRuns.slice(index - windowSize, index);
+        const anomalySum = anomalyWindow.reduce((acc, cur) => acc + cur.duration_seconds, 0);
+        const anomalyAvg = anomalySum / windowSize;
 
         // Check for anomaly
-        if (run.duration_seconds > rollingAvg * anomalyThreshold) {
+        if (run.duration_seconds > anomalyAvg * anomalyThreshold) {
           is_anomaly = true;
         }
       }
