@@ -77,7 +77,7 @@ app.post('/metrics', async (req: Request, res: Response) => {
   }
 });
 
-// --- NEW SCALABLE GET ENDPOINTS ---
+// --- DATA AGGREGATION AND ANALYSIS ENDPOINTS ---
 
 // Endpoint for high-level summary stats
 app.get('/api/stats', async (req: Request, res: Response) => {

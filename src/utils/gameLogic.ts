@@ -1,8 +1,4 @@
-/**
- * Calculate the winner of a tic-tac-toe game
- * @param squares The current state of the board
- * @returns The winner and winning line, or null if no winner
- */
+
 export function calculateWinner(squares: Array<string | null>) {
   // All possible winning lines (rows, columns, diagonals)
   const lines = [
@@ -29,11 +25,7 @@ export function calculateWinner(squares: Array<string | null>) {
   return null;
 }
 
-/**
- * Check if the game is a draw
- * @param squares The current state of the board
- * @returns True if the game is a draw, false otherwise
- */
+
 export function checkDraw(squares: Array<string | null>): boolean {
   // If there's a winner, it's not a draw
   if (calculateWinner(squares)) {
