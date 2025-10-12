@@ -34,14 +34,14 @@ jobs:
           files: |
             src/**
             public/**
-            package.json
-            package-lock.json
+            dashboard-frontend/**
+            metrics-collector/**
+            *.json
+            *.js
+            *.ts
             Dockerfile
             .dockerignore
             index.html
-            vite.config.ts
-            tailwind.config.js
-            tsconfig.json
 
   test:
     name: Unit Testing

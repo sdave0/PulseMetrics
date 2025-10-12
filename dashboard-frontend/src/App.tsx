@@ -80,8 +80,13 @@ function App() {
         setStats(statsRes.data);
         setTableData(tableRes.data);
         setAnalysisData(analysisRes.data);
-        setJobBreakdownData(jobBreakdownRes.data);
-        setJobTrendsData(jobTrendsRes.data);
+        setJobBreakdownData(jobBreakdownRes.data.filter((job: JobBreakdownData) => job.job_name !== 'Check for Application Changes'));
+
+        const trendsData = jobTrendsRes.data;
+        if (trendsData && trendsData.jobNames) {
+          trendsData.jobNames = trendsData.jobNames.filter((name: string) => name !== 'Check for Application Changes');
+        }
+        setJobTrendsData(trendsData);
 
         setError(null);
       } catch (err) {
