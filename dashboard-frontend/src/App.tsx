@@ -74,7 +74,7 @@ function App() {
           axios.get(`http://localhost:3000/api/runs/table?page=${currentPage}&limit=5`),
           axios.get('http://localhost:3000/api/runs/duration-analysis'),
           axios.get('http://localhost:3000/api/jobs/breakdown'),
-          axios.get('http://localhost:3000/api/jobs/trends')
+          axios.get('http://localhost:3000/api/jobs/trends?limit=20')
         ]);
 
         setStats(statsRes.data);
