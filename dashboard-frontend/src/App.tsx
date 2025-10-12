@@ -71,7 +71,7 @@ function App() {
         setLoading(true);
         const [statsRes, tableRes, analysisRes, jobBreakdownRes, jobTrendsRes] = await Promise.all([
           axios.get('http://localhost:3000/api/stats'),
-          axios.get(`http://localhost:3000/api/runs/table?page=${currentPage}`),
+          axios.get(`http://localhost:3000/api/runs/table?page=${currentPage}&limit=5`),
           axios.get('http://localhost:3000/api/runs/duration-analysis'),
           axios.get('http://localhost:3000/api/jobs/breakdown'),
           axios.get('http://localhost:3000/api/jobs/trends')
