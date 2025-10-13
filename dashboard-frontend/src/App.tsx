@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Dot } from 'recharts';
 import './App.css';
+import ReactMarkdown from 'react-markdown';
 
 // --- Data Interfaces ---
 interface Stats {
@@ -34,12 +35,21 @@ interface AnomalyData {
   is_anomaly: boolean;
 }
 
-interface JobBreakdownData {
+// Updated interfaces for the new rich breakdown data
+interface JobBreakdown {
   job_name: string;
+  status: string;
   current_duration: number;
   historical_avg: number | null;
+  historical_durations: number[];
   percent_change: number | null;
   is_anomaly: boolean;
+}
+
+interface JobBreakdownResponse {
+  pipeline_name: string;
+  commit_message: string;
+  jobs: JobBreakdown[];
 }
 
 interface JobTrendsData {
@@ -58,12 +68,27 @@ function App() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [tableData, setTableData] = useState<TableData | null>(null);
   const [analysisData, setAnalysisData] = useState<AnomalyData[]>([]);
-  const [jobBreakdownData, setJobBreakdownData] = useState<JobBreakdownData[]>([]);
+  const [jobBreakdownData, setJobBreakdownData] = useState<JobBreakdownResponse | null>(null);
   const [jobTrendsData, setJobTrendsData] = useState<JobTrendsData>({ chartData: [], jobNames: [] });
   const [currentPage, setCurrentPage] = useState(1);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // --- State for AI Feature ---
+  const [aiSummary, setAiSummary] = useState('');
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+
+  // Calls our backend to get the AI summary.
+  const getAiSummary = async (prompt: string): Promise<string> => {
+    console.log("Requesting AI summary from backend...");
+    const response = await axios.post('http://localhost:3000/api/generate-summary', { prompt });
+    if (response.data && response.data.summary) {
+      return response.data.summary;
+    }
+    throw new Error("Invalid response from AI summary endpoint.");
+  };
 
   useEffect(() => {
     const fetchAllData = async () => {
@@ -80,14 +105,19 @@ function App() {
         setStats(statsRes.data);
         setTableData(tableRes.data);
         setAnalysisData(analysisRes.data);
-        setJobBreakdownData(jobBreakdownRes.data.filter((job: JobBreakdownData) => job.job_name !== 'Check for Application Changes'));
+
+        // Handle new Job Breakdown data structure
+        const breakdownData = jobBreakdownRes.data;
+        if (breakdownData && breakdownData.jobs) {
+            breakdownData.jobs = breakdownData.jobs.filter((job: JobBreakdown) => job.job_name !== 'Check for Application Changes');
+        }
+        setJobBreakdownData(breakdownData);
 
         const trendsData = jobTrendsRes.data;
         if (trendsData && trendsData.jobNames) {
           trendsData.jobNames = trendsData.jobNames.filter((name: string) => name !== 'Check for Application Changes');
         }
         setJobTrendsData(trendsData);
-
         setError(null);
       } catch (err) {
         if (axios.isAxiosError(err)) {
@@ -103,6 +133,57 @@ function App() {
 
     fetchAllData();
   }, [currentPage]);
+
+  const handleAnalyzeClick = async () => {
+    if (!jobBreakdownData) return;
+
+    setIsAiLoading(true);
+    setAiSummary('');
+    setAiError('');
+
+    // 1. Filter aggressively based on user-defined rules.
+    const significantDeviations = jobBreakdownData.jobs.filter(job => {
+      const isFailed = job.status === 'failure';
+      const isSlow = job.status === 'success' && job.percent_change != null && job.historical_avg != null &&
+                     (job.percent_change >= 20 || (job.current_duration - job.historical_avg) > 15);
+      return isFailed || isSlow;
+    });
+
+    if (significantDeviations.length === 0) {
+      setAiSummary("No significant deviations found in the most recent run.");
+      setIsAiLoading(false);
+      return;
+    }
+
+    const jobDataString = significantDeviations.map(job => 
+      `- Job: "${job.job_name}"\n  - Status: ${job.status}\n  - Duration: ${job.current_duration}s\n  - Historical Average: ${job.historical_avg?.toFixed(2) || 'N/A'}s\n  - Recent Durations: [${job.historical_durations.join(', ')}]s`
+    ).join('\n');
+
+    // 2. Use the new, highly-specific prompt.
+    const prompt = `You are an expert DevOps engineer creating a performance report.
+
+**Task:**
+Analyze the provided job data and generate a two-part report:
+1.  **Executive Summary:** A single, concise sentence explaining the main finding.
+2.  **Key Findings & Recommendations:** A bulleted list describing each significant issue. Each recommendation MUST start with an action verb (e.g., Investigate, Review, Confirm).
+
+Do not add any other sections or concluding paragraphs.
+
+**Job Data:**
+${jobDataString}
+
+**Report:**`;
+
+    try {
+      const summary = await getAiSummary(prompt);
+      setAiSummary(summary);
+    } catch (err) {
+      setAiError("An error occurred while analyzing anomalies.");
+      console.error(err);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
 
   const StatCard = ({ title, value }: { title: string, value: string | number }) => (
     <div style={{ backgroundColor: '#2c2c2c', padding: '1.5rem', borderRadius: '8px', textAlign: 'center' }}>
@@ -129,6 +210,21 @@ function App() {
       boxShadow: isAnomaly ? '0 0 8px #ff6b81' : 'none'
     }}></span>
   );
+  
+  const AiSummaryDisplay = () => {
+    if (!aiSummary && !isAiLoading && !aiError) {
+      return null; // Don't show anything before the button is clicked
+    }
+
+    return (
+      <div style={{ backgroundColor: '#2c2c2c', padding: '1.5rem', borderRadius: '8px', marginTop: '1rem', border: '1px solid #444' }}>
+        <h3 style={{ margin: 0, color: '#aaa', marginBottom: '1rem' }}>AI Anomaly Analysis</h3>
+        {isAiLoading && <p>Analyzing...</p>}
+        {aiError && <p style={{ color: '#ff6b6b' }}>{aiError}</p>}
+        {aiSummary && <ReactMarkdown components={{ p: ({...props}) => <p style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }} {...props} /> }}>{aiSummary}</ReactMarkdown>}
+      </div>
+    );
+  };
 
   const lineColors = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#00C49F', '#FFBB28', '#FF8042'];
 
@@ -166,23 +262,37 @@ function App() {
         </div>
       )}
 
-      {jobBreakdownData.length > 0 && (
+      {jobBreakdownData && jobBreakdownData.jobs.length > 0 && (
         <div style={{ marginBottom: '2rem' }}>
-          <h2>Job Duration Breakdown (Most Recent Run)</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h2>Job Duration Breakdown (Most Recent Run)</h2>
+            <button onClick={handleAnalyzeClick} disabled={isAiLoading || !jobBreakdownData} style={{padding: '10px 15px', cursor: 'pointer'}}>
+              ✨ Analyze Anomalies
+            </button>
+          </div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid #555' }}>
                 <th style={{ padding: '12px', textAlign: 'left' }}>Job Name</th>
+                <th style={{ padding: '12px', textAlign: 'left' }}>Status</th>
                 <th style={{ padding: '12px', textAlign: 'left' }}>Current Duration</th>
-                <th style={{ padding: '12px', textAlign: 'left' }}>Historical Average (5 runs)</th>
+                <th style={{ padding: '12px', textAlign: 'left' }}>Historical Average</th>
                 <th style={{ padding: '12px', textAlign: 'left' }}>Percent Change</th>
                 <th style={{ padding: '12px', textAlign: 'left' }}>Anomaly</th>
               </tr>
             </thead>
             <tbody>
-              {jobBreakdownData.map(job => (
+              {jobBreakdownData.jobs.map(job => (
                 <tr key={job.job_name} style={{ borderBottom: '1px solid #444' }}>
                   <td style={{ padding: '12px', fontWeight: 'bold' }}>{job.job_name}</td>
+                  <td style={{ padding: '12px' }}>
+                    <span style={{
+                      color: job.status === 'success' ? '#86efac' : job.status === 'failure' ? '#f87171' : '#feca57',
+                      fontWeight: 'bold'
+                    }}>
+                      {job.status}
+                    </span>
+                  </td>
                   <td style={{ padding: '12px' }}>{job.current_duration}s</td>
                   <td style={{ padding: '12px' }}>{job.historical_avg ? `${job.historical_avg}s` : 'N/A'}</td>
                   <td style={{ padding: '12px', color: job.percent_change ? (job.percent_change > 0 ? '#ff6b81' : '#2ed573') : 'inherit' }}>
@@ -193,6 +303,7 @@ function App() {
               ))}
             </tbody>
           </table>
+          <AiSummaryDisplay />
         </div>
       )}
 

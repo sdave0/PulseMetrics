@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import { Pool } from 'pg';
 import cors from 'cors';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // --- DATABASE CONNECTION ---
 // Uses environment variables for configuration
@@ -74,6 +75,38 @@ app.post('/metrics', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error inserting data into database:', error);
     res.status(500).send({ error: 'Failed to store metrics.' });
+  }
+});
+
+// --- AI ENDPOINT ---
+
+// Initialize the Google AI client
+// IMPORTANT: This requires the GOOGLE_API_KEY environment variable to be set.
+if (!process.env.GOOGLE_API_KEY) {
+  console.warn("WARNING: GOOGLE_API_KEY environment variable is not set. AI endpoint will not work.");
+}
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
+
+app.post('/api/generate-summary', async (req: Request, res: Response) => {
+  const { prompt } = req.body;
+
+  if (!process.env.GOOGLE_API_KEY) {
+    return res.status(500).send({ error: 'AI service is not configured on the server.' });
+  }
+
+  if (!prompt) {
+    return res.status(400).send({ error: 'Prompt is required.' });
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+    res.status(200).json({ summary: text });
+  } catch (error) {
+    console.error('Error calling AI service:', error);
+    res.status(500).send({ error: 'Failed to generate summary from AI service.' });
   }
 });
 
@@ -211,73 +244,107 @@ interface Job {
 
 // Endpoint for job duration breakdown of the most recent run
 app.get('/api/jobs/breakdown', async (req: Request, res: Response) => {
-  const historySize = 5;
-  const anomalyThreshold = 1.25; // 25% slower
+  const historySize = 5; // Last 5 runs for historical context
+  const anomalyThreshold = 1.25; // 25% slower than average is an anomaly
 
   try {
-    // 1. Fetch the last N successful runs (most recent + history)
+    // 1. Fetch the last N runs (most recent + history)
     const query = `
-      SELECT run_number, jobs
+      SELECT run_number, jobs, workflow_name, commit_message
       FROM workflow_runs
-      WHERE status = 'success' AND jsonb_array_length(jobs) > 0
+      WHERE jsonb_array_length(jobs) > 0
       ORDER BY created_at DESC
       LIMIT ${historySize + 1};
     `;
     const result = await pool.query(query);
     const runs = result.rows;
 
+    if (runs.length === 0) {
+      return res.status(200).json({ pipeline_name: 'N/A', commit_message: 'N/A', jobs: [] });
+    }
+    
     if (runs.length < 2) {
-      return res.status(200).json([]); // Not enough data to compare
+      // Not enough data for historical comparison, but can return the most recent run's data
+      const mostRecentRun = runs[0];
+      const jobs = mostRecentRun.jobs.map((job: Job) => ({
+        job_name: job.name,
+        status: job.status,
+        current_duration: job.duration_seconds,
+        historical_avg: null,
+        historical_durations: [],
+        percent_change: null,
+        is_anomaly: false,
+      }));
+      return res.status(200).json({
+        pipeline_name: mostRecentRun.workflow_name,
+        commit_message: mostRecentRun.commit_message,
+        jobs: jobs,
+      });
     }
 
     // 2. Separate the most recent run from historical runs
     const mostRecentRun = runs[0];
     const historicalRuns = runs.slice(1);
 
-    // 3. Calculate historical average for each job name
-    const historicalAverages: { [key: string]: number } = {};
-    const jobCounts: { [key: string]: number } = {};
+    // 3. Collate historical data for each job name
+    const historicalData: { [key: string]: { durations: number[] } } = {};
 
     for (const run of historicalRuns) {
       for (const job of run.jobs) {
+        if (!historicalData[job.name]) {
+          historicalData[job.name] = { durations: [] };
+        }
+        // Add duration if the job was successful, to build a baseline of "good" runs
         if (job.status === 'success') {
-          historicalAverages[job.name] = (historicalAverages[job.name] || 0) + job.duration_seconds;
-          jobCounts[job.name] = (jobCounts[job.name] || 0) + 1;
+            historicalData[job.name].durations.push(job.duration_seconds);
         }
       }
     }
 
-    for (const jobName in historicalAverages) {
-      historicalAverages[jobName] /= jobCounts[jobName];
-    }
-
-    // 4. Build the breakdown for the most recent run
+    // 4. Build the detailed breakdown for the most recent run
     const breakdown = mostRecentRun.jobs.map((job: Job) => {
-      const historicalAvg = historicalAverages[job.name];
+      const history = historicalData[job.name];
+      const historicalDurations = history ? history.durations.reverse() : []; // Reverse to show oldest to newest
+      
+      let historicalAvg = null;
+      if (historicalDurations.length > 0) {
+        historicalAvg = historicalDurations.reduce((a, b) => a + b, 0) / historicalDurations.length;
+      }
+      
       let percentChange = null;
       let isAnomaly = false;
 
-      if (historicalAvg && historicalAvg > 0) {
+      if (historicalAvg && historicalAvg > 0 && job.status === 'success') {
         percentChange = ((job.duration_seconds - historicalAvg) / historicalAvg) * 100;
         if (percentChange > (anomalyThreshold - 1) * 100) {
           isAnomaly = true;
         }
+      } else if (job.status === 'failure') {
+        // Mark all failures as anomalies
+        isAnomaly = true;
       }
 
       return {
         job_name: job.name,
+        status: job.status,
         current_duration: job.duration_seconds,
         historical_avg: historicalAvg ? parseFloat(historicalAvg.toFixed(2)) : null,
+        historical_durations: historicalDurations,
         percent_change: percentChange ? parseFloat(percentChange.toFixed(1)) : null,
         is_anomaly: isAnomaly,
       };
     });
 
-    res.status(200).json(breakdown);
+    // 5. Structure the final, rich response
+    res.status(200).json({
+      pipeline_name: mostRecentRun.workflow_name,
+      commit_message: mostRecentRun.commit_message,
+      jobs: breakdown,
+    });
 
   } catch (error) {
-    console.error('Error fetching job breakdown data:', error);
-    res.status(500).send({ error: 'Failed to fetch job breakdown data.' });
+    console.error('Error fetching rich job breakdown data:', error);
+    res.status(500).send({ error: 'Failed to fetch rich job breakdown data.' });
   }
 });
 
