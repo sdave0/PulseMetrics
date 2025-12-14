@@ -50,3 +50,18 @@ export interface MetricsPayload {
   build_analysis: BuildAnalysis | null;
   artifacts: Artifact[];
 }
+
+export interface WorkflowRunRow {
+  run_number: number;
+  duration_seconds: number;
+  created_at: Date;
+  jobs: Job[];
+  workflow_name?: string;
+  commit_message?: string;
+}
+
+export interface StatsRow {
+  total_runs: string;
+  successful_runs: string;
+  median_duration: number;
+}

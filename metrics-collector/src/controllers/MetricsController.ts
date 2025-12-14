@@ -27,8 +27,10 @@ export class MetricsController {
       let failureReason = 'Unknown internal error';
       if (error instanceof Error) {
         failureReason = error.message;
-        if ('code' in error && (error as any).code) {
-             failureReason = `Database error (Code: ${(error as any).code}): ${(error as any).detail || error.message}`;
+        // Cast to a shape that might have DB codes
+        const dbError = error as Error & { code?: string; detail?: string };
+        if (dbError.code) {
+             failureReason = `Database error (Code: ${dbError.code}): ${dbError.detail || error.message}`;
         }
       }
 

@@ -18,7 +18,7 @@ const StatsSchema = z.object({
 });
 
 const TableRunSchema = z.object({
-  run_id: z.union([z.number(), z.string()]).transform(Number), // Handles bigint as string
+  run_id: z.union([z.number(), z.string()]).transform(Number),
   run_number: z.number(),
   html_url: z.string().nullable().transform(v => v || '#'),
   status: z.string().nullable().transform(v => v || 'unknown'),
@@ -68,41 +68,42 @@ export const apiService = {
   
   async getPipelines(): Promise<string[]> {
     const res = await apiClient.get('/api/pipelines');
-    return res.data || [];
+    return z.array(z.string()).parse(res.data || []);
   },
 
   async getStats(pipeline?: string): Promise<Stats> {
     const params = pipeline ? { pipeline } : {};
     const res = await apiClient.get('/api/stats', { params });
-    return res.data as Stats;
+    return StatsSchema.parse(res.data);
   },
 
   async getRunsTable(page: number, limit: number, pipeline?: string): Promise<TableData> {
     const params = { page, limit, ...(pipeline ? { pipeline } : {}) };
     const res = await apiClient.get('/api/runs/table', { params });
-    return res.data as TableData;
+    return TableDataSchema.parse(res.data);
   },
 
   async getDurationAnalysis(pipeline?: string): Promise<AnomalyData[]> {
     const params = pipeline ? { pipeline } : {};
     const res = await apiClient.get('/api/runs/duration-analysis', { params });
-    return res.data || [];
+    return z.array(AnomalyDataSchema).parse(res.data || []);
   },
 
   async getJobBreakdown(pipeline?: string): Promise<JobBreakdownResponse> {
     const params = pipeline ? { pipeline } : {};
     const res = await apiClient.get('/api/jobs/breakdown', { params });
-    return res.data as JobBreakdownResponse;
+    return JobBreakdownResponseSchema.parse(res.data);
   },
 
   async getJobTrends(limit: number, pipeline?: string): Promise<JobTrendsData> {
     const params = { limit, ...(pipeline ? { pipeline } : {}) };
     const res = await apiClient.get('/api/jobs/trends', { params });
-    return res.data as JobTrendsData;
+    return JobTrendsDataSchema.parse(res.data);
   },
 
   async generateAiSummary(prompt: string): Promise<string> {
     const res = await apiClient.post('/api/generate-summary', { prompt });
-    return res.data.summary;
+    const schema = z.object({ summary: z.string() });
+    return schema.parse(res.data).summary;
   }
 };

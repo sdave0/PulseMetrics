@@ -1,5 +1,5 @@
 import { MetricsRepository } from '../db/MetricsRepository';
-import { MetricsPayload, Workflow } from '../types';
+import { MetricsPayload, Workflow, WorkflowRunRow, Job } from '../types';
 import { safeDuration, safeString, safeDate } from '../utils/dataUtils';
 
 const repo = new MetricsRepository();
@@ -37,9 +37,9 @@ export class MetricsService {
         projectId, 
         normCommit, 
         jobs, 
-        test_summary, 
-        build_analysis, 
-        artifacts
+        test_summary || {}, 
+        build_analysis || {}, 
+        artifacts || []
     );
   }
 
@@ -51,12 +51,12 @@ export class MetricsService {
 
   async getStats(pipeline?: string) {
     const stats = await repo.getStats(pipeline);
-    const successRate = (stats.total_runs > 0) ? (stats.successful_runs / stats.total_runs) * 100 : 0;
+    const successRate = (parseInt(stats.total_runs, 10) > 0) ? (parseInt(stats.successful_runs, 10) / parseInt(stats.total_runs, 10)) * 100 : 0;
     
     return {
       total_runs: parseInt(stats.total_runs, 10),
       success_rate: parseFloat(successRate.toFixed(1)),
-      median_duration: stats.median_duration ? parseFloat(stats.median_duration) : 0,
+      median_duration: stats.median_duration ? parseFloat(String(stats.median_duration)) : 0,
     };
   }
 
@@ -86,12 +86,12 @@ export class MetricsService {
       let is_anomaly = false;
 
       const window = allRuns.slice(0, index + 1);
-      const sum = window.reduce((acc: number, cur: any) => acc + cur.duration_seconds, 0);
+      const sum = window.reduce((acc: number, cur: WorkflowRunRow) => acc + cur.duration_seconds, 0);
       rollingAvg = sum / (index + 1);
 
       if (index >= windowSize) {
         const anomalyWindow = allRuns.slice(index - windowSize, index);
-        const anomalySum = anomalyWindow.reduce((acc: number, cur: any) => acc + cur.duration_seconds, 0);
+        const anomalySum = anomalyWindow.reduce((acc: number, cur: WorkflowRunRow) => acc + cur.duration_seconds, 0);
         const anomalyAvg = anomalySum / windowSize;
 
         if (run.duration_seconds > anomalyAvg * anomalyThreshold) {
@@ -120,7 +120,7 @@ export class MetricsService {
     
     if (runs.length < 2) {
       const mostRecentRun = runs[0];
-      const jobs = mostRecentRun.jobs.map((job: any) => ({
+      const jobs = mostRecentRun.jobs.map((job: Job) => ({
         job_name: job.name,
         status: job.status,
         current_duration: job.duration_seconds,
@@ -146,12 +146,16 @@ export class MetricsService {
           historicalData[job.name] = { durations: [] };
         }
         if (job.status === 'success') {
-            historicalData[job.name].durations.push(job.duration_seconds);
+            // Check for null duration before pushing
+            const dur = job.duration_seconds;
+            if (dur !== null) {
+                historicalData[job.name].durations.push(dur);
+            }
         }
       }
     }
 
-    const breakdown = mostRecentRun.jobs.map((job: any) => {
+    const breakdown = mostRecentRun.jobs.map((job: Job) => {
       const history = historicalData[job.name];
       const historicalDurations = history ? history.durations.reverse() : [];
       
@@ -163,7 +167,7 @@ export class MetricsService {
       let percentChange = null;
       let isAnomaly = false;
 
-      if (historicalAvg && historicalAvg > 0 && job.status === 'success') {
+      if (historicalAvg && historicalAvg > 0 && job.status === 'success' && job.duration_seconds !== null) {
         percentChange = ((job.duration_seconds - historicalAvg) / historicalAvg) * 100;
         if (percentChange > (anomalyThreshold - 1) * 100) {
           isAnomaly = true;
@@ -194,13 +198,13 @@ export class MetricsService {
     const limit = 30;
     const runs = await repo.getJobTrends(limit, pipeline);
     const jobNames = new Set<string>();
-    const chartData = runs.map((run: any) => {
-      const runData: { [key: string]: string | number } = {
+    const chartData = runs.map((run: WorkflowRunRow) => {
+      const runData: Record<string, string | number> = {
         name: new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ` (#${run.run_number})`,
       };
 
       for (const job of run.jobs) {
-        if (job.status === 'success') {
+        if (job.status === 'success' && job.duration_seconds !== null) {
           jobNames.add(job.name);
           runData[job.name] = job.duration_seconds;
         }

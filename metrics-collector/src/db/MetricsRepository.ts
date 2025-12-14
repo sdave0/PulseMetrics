@@ -1,5 +1,5 @@
 import { pool } from './index';
-import { MetricsPayload, Workflow, Job } from '../types';
+import { Workflow, Job, Commit, TestSummary, BuildAnalysis, Artifact, StatsRow, WorkflowRunRow } from '../types';
 
 export class MetricsRepository {
   
@@ -17,11 +17,11 @@ export class MetricsRepository {
   async upsertWorkflowRun(
     run: Workflow, 
     projectId: number, 
-    commit: any, 
+    commit: Commit | Record<string, unknown>, 
     jobs: Job[], 
-    testSummary: any, 
-    buildAnalysis: any, 
-    artifacts: any
+    testSummary: TestSummary | Record<string, unknown>, 
+    buildAnalysis: BuildAnalysis | Record<string, unknown>, 
+    artifacts: Artifact[] | Record<string, unknown>
   ): Promise<void> {
     const query = `
       INSERT INTO workflow_runs(
@@ -42,13 +42,17 @@ export class MetricsRepository {
         received_at = NOW();
     `;
     
+    // Helper to safely access properties if they exist
+    const c = commit as any;
+    const sha = c?.sha || '0000000';
+    const msg = c?.message || 'No message';
+    const auth = c?.author || 'Unknown';
+
     const values = [
       run.run_id, run.run_number, run.name, projectId, run.html_url, 
       run.status, run.trigger, run.branch, run.duration_seconds, 
       run.created_at, run.completed_at, 
-      commit?.sha || '0000000', 
-      commit?.message || 'No message', 
-      commit?.author || 'Unknown', 
+      sha, msg, auth,
       JSON.stringify(jobs || []), JSON.stringify(testSummary || {}), 
       JSON.stringify(buildAnalysis || {}), JSON.stringify(artifacts || []),
     ];
@@ -59,10 +63,10 @@ export class MetricsRepository {
   async getPipelines(): Promise<string[]> {
     const query = 'SELECT name FROM projects ORDER BY name ASC;';
     const result = await pool.query(query);
-    return result.rows.map(row => row.name);
+    return result.rows.map((row: { name: string }) => row.name);
   }
 
-  async getStats(pipeline?: string): Promise<any> {
+  async getStats(pipeline?: string): Promise<StatsRow> {
     let query = `
       SELECT
         COUNT(*) AS total_runs,
@@ -79,15 +83,15 @@ export class MetricsRepository {
     return result.rows[0];
   }
 
-  async getChartData(): Promise<any[]> {
+  async getChartData(): Promise<WorkflowRunRow[]> {
     const query = 'SELECT created_at, run_number, duration_seconds FROM workflow_runs ORDER BY created_at ASC;';
     const result = await pool.query(query);
     return result.rows;
   }
 
-  async getRunsTable(limit: number, offset: number, pipeline?: string): Promise<{ runs: any[], totalRuns: number }> {
+  async getRunsTable(limit: number, offset: number, pipeline?: string): Promise<{ runs: WorkflowRunRow[], totalRuns: number }> {
     let countQuery = 'SELECT COUNT(*) FROM workflow_runs';
-    let countParams: (string | null)[] = [];
+    const countParams: (string | null)[] = [];
     if (pipeline) {
         countQuery += ' WHERE workflow_name = $1';
         countParams.push(pipeline);
@@ -103,7 +107,7 @@ export class MetricsRepository {
       FROM workflow_runs
     `;
     
-    let runsParams: (string | number | null)[] = [];
+    const runsParams: (string | number | null)[] = [];
     if (pipeline) {
         runsQuery += ` WHERE workflow_name = $1`;
         runsParams.push(pipeline);
@@ -116,7 +120,7 @@ export class MetricsRepository {
     return { runs: runsResult.rows, totalRuns };
   }
 
-  async getDurationAnalysis(pipeline?: string): Promise<any[]> {
+  async getDurationAnalysis(pipeline?: string): Promise<WorkflowRunRow[]> {
     let query = `
       SELECT run_number, duration_seconds, created_at
       FROM workflow_runs
@@ -132,7 +136,7 @@ export class MetricsRepository {
     return result.rows;
   }
 
-  async getJobBreakdown(historySize: number, pipeline?: string): Promise<any[]> {
+  async getJobBreakdown(historySize: number, pipeline?: string): Promise<WorkflowRunRow[]> {
     let query = `
       SELECT run_number, jobs, workflow_name, commit_message
       FROM workflow_runs
@@ -148,7 +152,7 @@ export class MetricsRepository {
     return result.rows;
   }
 
-  async getJobTrends(limit: number, pipeline?: string): Promise<any[]> {
+  async getJobTrends(limit: number, pipeline?: string): Promise<WorkflowRunRow[]> {
     let query = `
       SELECT run_number, created_at, jobs
       FROM workflow_runs
