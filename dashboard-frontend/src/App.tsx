@@ -3,60 +3,11 @@ import axios from 'axios';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Dot } from 'recharts';
 import './App.css';
 import ReactMarkdown from 'react-markdown';
+import { 
+  Stats, TableData, AnomalyData, JobBreakdownResponse, JobTrendsData 
+} from './types';
 
-// --- Data Interfaces ---
-interface Stats {
-  total_runs: number;
-  success_rate: number;
-  median_duration: number;
-}
-
-interface TableRun {
-  run_id: number;
-  run_number: number;
-  html_url: string;
-  status: string;
-  duration_seconds: number;
-  created_at: string;
-  commit_author: string;
-  commit_message: string;
-}
-
-interface TableData {
-  runs: TableRun[];
-  totalPages: number;
-  currentPage: number;
-}
-
-interface AnomalyData {
-  name: string;
-  duration: number;
-  rolling_avg: number | null;
-  is_anomaly: boolean;
-}
-
-// Updated interfaces for the new rich breakdown data
-interface JobBreakdown {
-  job_name: string;
-  status: string;
-  current_duration: number;
-  historical_avg: number | null;
-  historical_durations: number[];
-  percent_change: number | null;
-  is_anomaly: boolean;
-}
-
-interface JobBreakdownResponse {
-  pipeline_name: string;
-  commit_message: string;
-  jobs: JobBreakdown[];
-}
-
-interface JobTrendsData {
-  chartData: Array<Record<string, string | number>>;
-  jobNames: string[];
-}
-
+// Component Props & Internal Types
 interface CustomizedDotProps {
   cx?: number;
   cy?: number;
@@ -71,16 +22,19 @@ function App() {
   const [jobBreakdownData, setJobBreakdownData] = useState<JobBreakdownResponse | null>(null);
   const [jobTrendsData, setJobTrendsData] = useState<JobTrendsData>({ chartData: [], jobNames: [] });
   const [currentPage, setCurrentPage] = useState(1);
+  
+  const [pipelines, setPipelines] = useState<string[]>([]);
+  const [selectedPipeline, setSelectedPipeline] = useState<string>('');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // --- State for AI Feature ---
+  // AI Feature State
   const [aiSummary, setAiSummary] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
 
-  // Calls our backend to get the AI summary.
+  // Handles AI summary request to the backend.
   const getAiSummary = async (prompt: string): Promise<string> => {
     console.log("Requesting AI summary from backend...");
     const response = await axios.post('http://localhost:3000/api/generate-summary', { prompt });
@@ -89,17 +43,40 @@ function App() {
     }
     throw new Error("Invalid response from AI summary endpoint.");
   };
+  
+  // Fetch available pipelines on mount
+  useEffect(() => {
+    const fetchPipelines = async () => {
+        try {
+            const res = await axios.get('http://localhost:3000/api/pipelines');
+            setPipelines(res.data);
+            if (res.data.length > 0) {
+                // Default to the first pipeline if none selected
+                setSelectedPipeline(res.data[0]);
+            }
+        } catch (e) {
+            console.error("Failed to fetch pipelines", e);
+        }
+    };
+    fetchPipelines();
+  }, []);
 
   useEffect(() => {
     const fetchAllData = async () => {
+      // Don't fetch if we are waiting for initial pipeline selection (unless there are no pipelines yet)
+      if (pipelines.length > 0 && !selectedPipeline) return;
+
       try {
         setLoading(true);
+        const params = selectedPipeline ? `?pipeline=${encodeURIComponent(selectedPipeline)}` : '';
+        const pageParams = `?page=${currentPage}&limit=5${selectedPipeline ? `&pipeline=${encodeURIComponent(selectedPipeline)}` : ''}`;
+        
         const [statsRes, tableRes, analysisRes, jobBreakdownRes, jobTrendsRes] = await Promise.all([
-          axios.get('http://localhost:3000/api/stats'),
-          axios.get(`http://localhost:3000/api/runs/table?page=${currentPage}&limit=5`),
-          axios.get('http://localhost:3000/api/runs/duration-analysis'),
-          axios.get('http://localhost:3000/api/jobs/breakdown'),
-          axios.get('http://localhost:3000/api/jobs/trends?limit=20')
+          axios.get(`http://localhost:3000/api/stats${params}`),
+          axios.get(`http://localhost:3000/api/runs/table${pageParams}`),
+          axios.get(`http://localhost:3000/api/runs/duration-analysis${params}`),
+          axios.get(`http://localhost:3000/api/jobs/breakdown${params}`),
+          axios.get(`http://localhost:3000/api/jobs/trends${params}&limit=20`) // trends has limit param too
         ]);
 
         setStats(statsRes.data);
@@ -108,15 +85,9 @@ function App() {
 
         // Handle new Job Breakdown data structure
         const breakdownData = jobBreakdownRes.data;
-        if (breakdownData && breakdownData.jobs) {
-            breakdownData.jobs = breakdownData.jobs.filter((job: JobBreakdown) => job.job_name !== 'Check for Application Changes');
-        }
         setJobBreakdownData(breakdownData);
 
         const trendsData = jobTrendsRes.data;
-        if (trendsData && trendsData.jobNames) {
-          trendsData.jobNames = trendsData.jobNames.filter((name: string) => name !== 'Check for Application Changes');
-        }
         setJobTrendsData(trendsData);
         setError(null);
       } catch (err) {
@@ -132,7 +103,7 @@ function App() {
     };
 
     fetchAllData();
-  }, [currentPage]);
+  }, [currentPage, selectedPipeline, pipelines.length]);
 
   const handleAnalyzeClick = async () => {
     if (!jobBreakdownData) return;
@@ -141,7 +112,7 @@ function App() {
     setAiSummary('');
     setAiError('');
 
-    // 1. Filter aggressively based on user-defined rules.
+    // Filter for significant deviations based on defined rules.
     const significantDeviations = jobBreakdownData.jobs.filter(job => {
       const isFailed = job.status === 'failure';
       const isSlow = job.status === 'success' && job.percent_change != null && job.historical_avg != null &&
@@ -159,7 +130,7 @@ function App() {
       `- Job: "${job.job_name}"\n  - Status: ${job.status}\n  - Duration: ${job.current_duration}s\n  - Historical Average: ${job.historical_avg?.toFixed(2) || 'N/A'}s\n  - Recent Durations: [${job.historical_durations.join(', ')}]s`
     ).join('\n');
 
-    // 2. Use the new, highly-specific prompt.
+    // Construct the prompt for AI analysis.
     const prompt = `You are an expert DevOps engineer creating a performance report.
 
 **Task:**
@@ -230,7 +201,26 @@ ${jobDataString}
 
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
-      <h1>CI/CD Pipeline Metrics Dashboard</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <h1>CI/CD Pipeline Metrics Dashboard</h1>
+        {pipelines.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <label style={{ fontWeight: 'bold' }}>Project:</label>
+                <select 
+                    value={selectedPipeline} 
+                    onChange={(e) => {
+                        setSelectedPipeline(e.target.value);
+                        setCurrentPage(1); // Reset to first page on change
+                    }}
+                    style={{ padding: '8px', borderRadius: '4px', backgroundColor: '#333', color: 'white', border: '1px solid #555' }}
+                >
+                    {pipelines.map(p => (
+                        <option key={p} value={p}>{p}</option>
+                    ))}
+                </select>
+            </div>
+        )}
+      </div>
 
       {loading && <p>Loading dashboard...</p>}
       {error && <p style={{ color: '#ff6b6b' }}>Error fetching data: {error}</p>}
@@ -293,7 +283,7 @@ ${jobDataString}
                       {job.status}
                     </span>
                   </td>
-                  <td style={{ padding: '12px' }}>{job.current_duration}s</td>
+                  <td style={{ padding: '12px' }}>{job.current_duration === -1 ? '-' : `${job.current_duration}s`}</td>
                   <td style={{ padding: '12px' }}>{job.historical_avg ? `${job.historical_avg}s` : 'N/A'}</td>
                   <td style={{ padding: '12px', color: job.percent_change ? (job.percent_change > 0 ? '#ff6b81' : '#2ed573') : 'inherit' }}>
                     {job.percent_change ? `${job.percent_change > 0 ? '+' : ''}${job.percent_change}%` : 'N/A'}

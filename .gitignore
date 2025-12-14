@@ -28,3 +28,11 @@ progressfile.md
 
 # Environment files
 /metrics-collector/.env
+# Documentation & Context
+UPGRADE_SUMMARY.md
+CODEBASE_CONTEXT.md
+
+rules.txt
+pulse-action-setup.md
+docs/
+pulse-action/test-local.js
