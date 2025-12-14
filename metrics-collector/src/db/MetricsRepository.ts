@@ -43,10 +43,10 @@ export class MetricsRepository {
     `;
     
     // Helper to safely access properties if they exist
-    const c = commit as any;
-    const sha = c?.sha || '0000000';
-    const msg = c?.message || 'No message';
-    const auth = c?.author || 'Unknown';
+    const c = commit as Record<string, unknown>;
+    const sha = typeof c.sha === 'string' ? c.sha : '0000000';
+    const msg = typeof c.message === 'string' ? c.message : 'No message';
+    const auth = typeof c.author === 'string' ? c.author : 'Unknown';
 
     const values = [
       run.run_id, run.run_number, run.name, projectId, run.html_url, 
