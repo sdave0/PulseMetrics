@@ -35,4 +35,4 @@ app.post('/api/generate-summary', (req, res) => controller.generateAiSummary(req
 // Start Server
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
-});
+}); // Listening on configured port
