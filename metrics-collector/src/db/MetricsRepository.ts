@@ -21,28 +21,33 @@ export class MetricsRepository {
     jobs: Job[], 
     testSummary: TestSummary | Record<string, unknown>, 
     buildAnalysis: BuildAnalysis | Record<string, unknown>, 
-    artifacts: Artifact[] | Record<string, unknown>
+    artifacts: Artifact[] | Record<string, unknown>,
+    costUsd: number = 0
   ): Promise<void> {
     const query = `
       INSERT INTO workflow_runs(
         run_id, run_number, workflow_name, project_id, html_url, status, trigger_event, 
-        branch, duration_seconds, created_at, completed_at, commit_sha, 
+        branch, duration_seconds, cost_usd, created_at, completed_at, commit_sha, 
         commit_message, commit_author, jobs, test_summary, build_analysis, artifacts
       )
-      VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
       ON CONFLICT (run_id) DO UPDATE SET
         status = EXCLUDED.status,
         completed_at = EXCLUDED.completed_at,
         duration_seconds = EXCLUDED.duration_seconds,
+        cost_usd = EXCLUDED.cost_usd,
         jobs = EXCLUDED.jobs,
         test_summary = EXCLUDED.test_summary,
         build_analysis = EXCLUDED.build_analysis,
         artifacts = EXCLUDED.artifacts,
         project_id = EXCLUDED.project_id,
-        received_at = NOW();
+        received_at = NOW()
+      WHERE 
+        workflow_runs.completed_at IS NULL 
+        OR EXCLUDED.completed_at >= workflow_runs.completed_at
+        OR EXCLUDED.status = 'in_progress';
     `;
     
-    // Helper to safely access properties if they exist
     const c = commit as Record<string, unknown>;
     const sha = typeof c.sha === 'string' ? c.sha : '0000000';
     const msg = typeof c.message === 'string' ? c.message : 'No message';
@@ -50,7 +55,7 @@ export class MetricsRepository {
 
     const values = [
       run.run_id, run.run_number, run.name, projectId, run.html_url, 
-      run.status, run.trigger, run.branch, run.duration_seconds, 
+      run.status, run.trigger, run.branch, run.duration_seconds, costUsd,
       run.created_at, run.completed_at, 
       sha, msg, auth,
       JSON.stringify(jobs || []), JSON.stringify(testSummary || {}), 
@@ -71,7 +76,8 @@ export class MetricsRepository {
       SELECT
         COUNT(*) AS total_runs,
         COUNT(*) FILTER (WHERE status = 'success') AS successful_runs,
-        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_seconds) AS median_duration
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_seconds) AS median_duration,
+        SUM(cost_usd) AS total_cost
       FROM workflow_runs
     `;
     const params: (string | null)[] = [];
@@ -103,7 +109,7 @@ export class MetricsRepository {
     let runsQuery = `
       SELECT 
         run_id, run_number, html_url, status, branch, 
-        commit_message, commit_author, duration_seconds, created_at
+        commit_message, commit_author, duration_seconds, cost_usd, created_at
       FROM workflow_runs
     `;
     
@@ -138,7 +144,7 @@ export class MetricsRepository {
 
   async getJobBreakdown(historySize: number, pipeline?: string): Promise<WorkflowRunRow[]> {
     let query = `
-      SELECT run_number, jobs, workflow_name, commit_message
+      SELECT run_number, jobs, workflow_name, commit_message, commit_sha
       FROM workflow_runs
       WHERE jsonb_array_length(jobs) > 0
     `;

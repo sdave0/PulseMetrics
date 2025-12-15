@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS workflow_runs (
     trigger_event VARCHAR(255),
     branch VARCHAR(255),
     duration_seconds INT,
+    cost_usd DECIMAL(10, 4),
     created_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     commit_sha VARCHAR(255),

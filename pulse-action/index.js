@@ -106,11 +106,27 @@ async function run() {
       };
     }
 
-    payload.jobs = jobs.map(job => ({
-      name: job.name,
-      status: job.conclusion,
-      duration_seconds: job.completed_at && job.started_at ? Math.round((new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000) : 0,
-    }));
+    payload.jobs = jobs.map(job => {
+      let runnerType = 'unknown';
+      if (job.labels && Array.isArray(job.labels)) {
+        if (job.labels.includes('self-hosted')) {
+             runnerType = 'self-hosted';
+        } else if (job.labels.some(l => l.startsWith('ubuntu'))) {
+             runnerType = 'ubuntu-latest';
+        } else if (job.labels.some(l => l.startsWith('windows'))) {
+             runnerType = 'windows-latest';
+        } else if (job.labels.some(l => l.startsWith('macos'))) {
+             runnerType = 'macos-latest';
+        }
+      }
+
+      return {
+        name: job.name,
+        status: job.conclusion,
+        duration_seconds: job.completed_at && job.started_at ? Math.round((new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000) : 0,
+        runner_type: runnerType
+      };
+    });
 
     // 4.2 Test Summary (Generic Search)
     // We look for any file named 'test-results.json' in the artifacts

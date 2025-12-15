@@ -4,6 +4,7 @@ export interface Job {
   duration_seconds: number | null;
   started_at?: string;
   completed_at?: string;
+  runner_type?: string;
 }
 
 export interface Commit {
@@ -54,14 +55,17 @@ export interface MetricsPayload {
 export interface WorkflowRunRow {
   run_number: number;
   duration_seconds: number;
+  cost_usd?: number;
   created_at: Date;
   jobs: Job[];
   workflow_name?: string;
   commit_message?: string;
+  commit_sha?: string;
 }
 
 export interface StatsRow {
   total_runs: string;
   successful_runs: string;
   median_duration: number;
+  total_cost: string;
 }

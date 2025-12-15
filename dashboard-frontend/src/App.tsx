@@ -3,18 +3,70 @@ import axios from 'axios';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Dot } from 'recharts';
 import './App.css';
 import ReactMarkdown from 'react-markdown';
-import { 
-  Stats, TableData, AnomalyData, JobBreakdownResponse, JobTrendsData 
-} from './types';
 
-// Component Props & Internal Types
+interface Stats {
+  total_runs: number;
+  success_rate: number;
+  median_duration: number;
+  total_cost: number;
+}
+
+interface TableRun {
+  run_id: number;
+  run_number: number;
+  html_url: string;
+  status: string;
+  duration_seconds: number;
+  cost_usd: number | null;
+  created_at: string;
+  commit_author: string;
+  commit_message: string;
+}
+
+interface TableData {
+  runs: TableRun[];
+  totalPages: number;
+  currentPage: number;
+}
+
+interface AnomalyData {
+  name: string;
+  duration: number;
+  rolling_avg: number | null;
+  is_anomaly: boolean;
+}
+
+// Updated interfaces for the new rich breakdown data
+interface JobBreakdown {
+  job_name: string;
+  job_category: string;
+  status: string;
+  current_duration: number;
+  historical_avg: number | null;
+  historical_durations: number[];
+  percent_change: number | null;
+  is_anomaly: boolean;
+  last_healthy_run_sha: string | null;
+}
+
+interface JobBreakdownResponse {
+  pipeline_name: string;
+  commit_message: string;
+  commit_sha: string;
+  jobs: JobBreakdown[];
+}
+
+interface JobTrendsData {
+  chartData: Array<Record<string, string | number>>;
+  jobNames: string[];
+}
+
 interface CustomizedDotProps {
   cx?: number;
   cy?: number;
   payload?: AnomalyData;
 }
 
-// --- Main App Component ---
 function App() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [tableData, setTableData] = useState<TableData | null>(null);
@@ -72,11 +124,11 @@ function App() {
         const pageParams = `?page=${currentPage}&limit=5${selectedPipeline ? `&pipeline=${encodeURIComponent(selectedPipeline)}` : ''}`;
         
         const [statsRes, tableRes, analysisRes, jobBreakdownRes, jobTrendsRes] = await Promise.all([
-          axios.get(`http://localhost:3000/api/stats${params}`),
-          axios.get(`http://localhost:3000/api/runs/table${pageParams}`),
-          axios.get(`http://localhost:3000/api/runs/duration-analysis${params}`),
-          axios.get(`http://localhost:3000/api/jobs/breakdown${params}`),
-          axios.get(`http://localhost:3000/api/jobs/trends${params}&limit=20`) // trends has limit param too
+axios.get(`http://localhost:3000/api/stats${params}`),
+axios.get(`http://localhost:3000/api/runs/table${pageParams}`),
+axios.get(`http://localhost:3000/api/runs/duration-analysis${params}`),
+axios.get(`http://localhost:3000/api/jobs/breakdown${params}`),
+axios.get(`http://localhost:3000/api/jobs/trends${params}&limit=20`)
         ]);
 
         setStats(statsRes.data);
@@ -126,30 +178,72 @@ function App() {
       return;
     }
 
-    const jobDataString = significantDeviations.map(job => 
-      `- Job: "${job.job_name}"\n  - Status: ${job.status}\n  - Duration: ${job.current_duration}s\n  - Historical Average: ${job.historical_avg?.toFixed(2) || 'N/A'}s\n  - Recent Durations: [${job.historical_durations.join(', ')}]s`
-    ).join('\n');
+    // Construct the input object for the AI
+    const investigationInputs = significantDeviations.map(job => ({
+      job_name: job.job_name,
+      job_category: job.job_category,
+      job_outcome: job.status, // "success" or "failure"
+      current_duration_ms: job.current_duration * 1000,
+      historical_avg_duration_ms: (job.historical_avg || 0) * 1000,
+      duration_delta_percent: job.percent_change || 0,
+      last_healthy_run_sha: job.last_healthy_run_sha || "unknown",
+      current_run_sha: jobBreakdownData.commit_sha || "unknown",
+      recent_run_durations: job.historical_durations.map(d => d * 1000)
+    }));
 
-    // Construct the prompt for AI analysis.
-    const prompt = `You are an expert DevOps engineer creating a performance report.
+    // Construct the revised prompt
+    const prompt = `You are an expert DevOps engineer creating a structured investigation report. Your goal is to provide actionable guidance on CI/CD anomalies without hallucinating, summarizing obvious metrics, or overexplaining.
 
-**Task:**
-Analyze the provided job data and generate a two-part report:
-1.  **Executive Summary:** A single, concise sentence explaining the main finding.
-2.  **Key Findings & Recommendations:** A bulleted list describing each significant issue. Each recommendation MUST start with an action verb (e.g., Investigate, Review, Confirm).
+**Hard Constraints:**
+- Output MUST be valid JSON ONLY. No markdown, headers, or extra text.
+- Do NOT summarize metrics already provided in the input.
+- Do NOT claim certainty; use probabilistic language.
+- Only include actionable information that can be inferred from the input data.
+- Do NOT suggest monitoring infrastructure (CPU, memory, network) or any external tools not provided.
+- Do NOT suggest re-running jobs, reproducing environments, or accessing systems outside the input.
+- Do NOT comment on dataset quality, sample size, or statistical confidence beyond the provided confidence_level.
+- Limit likely_causes to 3 items max.
+- Limit investigation_steps to 3 items max.
+- Limit recommended_logs to 2 items max.
+- If insufficient data is provided, note this ONLY in the 'notes' field.
 
-Do not add any other sections or concluding paragraphs.
+**Input Data:**
+${JSON.stringify(investigationInputs, null, 2)}
 
-**Job Data:**
-${jobDataString}
+**Required JSON Output Schema:**
+{
+  "summary": string,
+  "confidence_level": "low" | "medium",
+  "likely_causes": string[],
+  "investigation_steps": string[],
+  "recommended_logs": string[],
+  "notes": string[]
+}
 
-**Report:**`;
+**Instructions:**
+- Use the job_category field to tailor likely causes and investigation steps.
+- Treat failed jobs and slow-but-successful jobs differently:
+    - Failed jobs: focus on errors or steps likely to cause failure.
+    - Slow successful jobs: focus on performance regressions, test complexity, or environment changes.
+- Produce only the JSON response that follows the schema above.
+- Keep all output concise, actionable, and scoped to the available input.`;
 
     try {
       const summary = await getAiSummary(prompt);
-      setAiSummary(summary);
+
+      // Clean up markdown if present
+      let cleanSummary = summary.trim();
+      if (cleanSummary.startsWith('```json')) {
+        cleanSummary = cleanSummary.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanSummary.startsWith('```')) {
+        cleanSummary = cleanSummary.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+
+      // Try parsing directly to validate JSON
+      const parsed = JSON.parse(cleanSummary);
+      setAiSummary(JSON.stringify(parsed, null, 2));
     } catch (err) {
-      setAiError("An error occurred while analyzing anomalies.");
+      setAiError("AI output was not valid JSON or an error occurred.");
       console.error(err);
     } finally {
       setIsAiLoading(false);
@@ -184,15 +278,72 @@ ${jobDataString}
   
   const AiSummaryDisplay = () => {
     if (!aiSummary && !isAiLoading && !aiError) {
-      return null; // Don't show anything before the button is clicked
+      return null;
+    }
+
+    let report = null;
+    if (aiSummary) {
+        try {
+            report = JSON.parse(aiSummary);
+        } catch (e) {
+            report = { summary: aiSummary };
+        }
     }
 
     return (
       <div style={{ backgroundColor: '#2c2c2c', padding: '1.5rem', borderRadius: '8px', marginTop: '1rem', border: '1px solid #444' }}>
-        <h3 style={{ margin: 0, color: '#aaa', marginBottom: '1rem' }}>AI Anomaly Analysis</h3>
-        {isAiLoading && <p>Analyzing...</p>}
+        <h3 style={{ margin: 0, color: '#aaa', marginBottom: '1rem' }}>
+          AI Investigation Assistant
+          {report && report.confidence_level && (
+             <span style={{ fontSize: '0.8em', marginLeft: '10px', padding: '2px 8px', borderRadius: '4px', backgroundColor: report.confidence_level === 'medium' ? '#f59e0b' : '#3b82f6', color: '#fff' }}>
+                {report.confidence_level.toUpperCase()} CONFIDENCE
+             </span>
+          )}
+        </h3>
+        
+        {isAiLoading && <p>Analyzing inputs...</p>}
         {aiError && <p style={{ color: '#ff6b6b' }}>{aiError}</p>}
-        {aiSummary && <ReactMarkdown components={{ p: ({...props}) => <p style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }} {...props} /> }}>{aiSummary}</ReactMarkdown>}
+        
+        {report && (
+            <div>
+                <p style={{ fontSize: '1.1em', fontWeight: 'bold', marginBottom: '1rem' }}>{report.summary}</p>
+                
+                {report.likely_causes && report.likely_causes.length > 0 && (
+                    <div style={{ marginBottom: '1rem' }}>
+                        <h4 style={{ color: '#f87171', marginBottom: '0.5rem' }}>Likely Causes</h4>
+                        <ul style={{ paddingLeft: '20px', margin: 0 }}>
+                            {report.likely_causes.map((c: string, i: number) => <li key={i} style={{ marginBottom: '4px' }}>{c}</li>)}
+                        </ul>
+                    </div>
+                )}
+                
+                {report.investigation_steps && report.investigation_steps.length > 0 && (
+                    <div style={{ marginBottom: '1rem' }}>
+                        <h4 style={{ color: '#54a0ff', marginBottom: '0.5rem' }}>Recommended Investigation Steps</h4>
+                         <ol style={{ paddingLeft: '20px', margin: 0 }}>
+                            {report.investigation_steps.map((s: string, i: number) => <li key={i} style={{ marginBottom: '4px' }}>{s}</li>)}
+                        </ol>
+                    </div>
+                )}
+
+                 {report.recommended_logs && report.recommended_logs.length > 0 && (
+                    <div style={{ marginBottom: '1rem' }}>
+                        <h4 style={{ color: '#ccc', marginBottom: '0.5rem' }}>Check Logs</h4>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                             {report.recommended_logs.map((log: string, i: number) => (
+                                 <span key={i} style={{ backgroundColor: '#444', padding: '4px 8px', borderRadius: '4px', fontFamily: 'monospace' }}>{log}</span>
+                             ))}
+                        </div>
+                    </div>
+                )}
+                
+                 {report.notes && report.notes.length > 0 && (
+                    <div style={{ marginTop: '1rem', fontStyle: 'italic', color: '#888' }}>
+                        {report.notes.map((n: string, i: number) => <p key={i} style={{ margin: 0 }}>{n}</p>)}
+                    </div>
+                )}
+            </div>
+        )}
       </div>
     );
   };
@@ -202,7 +353,7 @@ ${jobDataString}
   return (
     <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h1>CI/CD Pipeline Metrics Dashboard</h1>
+        <h1 style={{ marginBottom: '0.5rem' }}>{selectedPipeline ? `Pulse: ${selectedPipeline}` : 'Pulse'}</h1>
         {pipelines.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                 <label style={{ fontWeight: 'bold' }}>Project:</label>
@@ -230,6 +381,7 @@ ${jobDataString}
           <StatCard title="Total Runs" value={stats.total_runs} />
           <StatCard title="Success Rate" value={`${stats.success_rate}%`} />
           <StatCard title="Median Duration" value={`${stats.median_duration}s`} />
+          <StatCard title="Total Cost" value={`$${stats.total_cost.toFixed(2)}`} />
         </div>
       )}
 
@@ -268,7 +420,7 @@ ${jobDataString}
                 <th style={{ padding: '12px', textAlign: 'left' }}>Current Duration</th>
                 <th style={{ padding: '12px', textAlign: 'left' }}>Historical Average</th>
                 <th style={{ padding: '12px', textAlign: 'left' }}>Percent Change</th>
-                <th style={{ padding: '12px', textAlign: 'left' }}>Anomaly</th>
+                <th style={{ padding: '12px', textAlign: 'left' }}>Health</th>
               </tr>
             </thead>
             <tbody>
@@ -335,6 +487,7 @@ ${jobDataString}
                 <th style={{ padding: '12px', textAlign: 'left' }}>Commit</th>
                 <th style={{ padding: '12px', textAlign: 'left' }}>Author</th>
                 <th style={{ padding: '12px', textAlign: 'left' }}>Duration</th>
+                <th style={{ padding: '12px', textAlign: 'left' }}>Cost</th>
                 <th style={{ padding: '12px', textAlign: 'left' }}>Date</th>
               </tr>
             </thead>
@@ -357,6 +510,7 @@ ${jobDataString}
                   <td style={{ padding: '12px', maxWidth: '300px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{run.commit_message.split('\n')[0]}</td>
                   <td style={{ padding: '12px' }}>{run.commit_author}</td>
                   <td style={{ padding: '12px' }}>{run.duration_seconds}s</td>
+                  <td style={{ padding: '12px' }}>{run.cost_usd !== null ? `$${Number(run.cost_usd).toFixed(4)}` : '-'}</td>
                   <td style={{ padding: '12px' }}>{new Date(run.created_at).toLocaleDateString()}</td>
                 </tr>
               ))}

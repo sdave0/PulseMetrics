@@ -13,7 +13,6 @@ app.use(cors());
 // Controller
 const controller = new MetricsController();
 
-// --- Routes ---
 
 app.get('/', (req, res) => res.send('Metrics Collector is running!'));
 

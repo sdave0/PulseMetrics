@@ -4,17 +4,35 @@ import { safeDuration, safeString, safeDate } from '../utils/dataUtils';
 
 const repo = new MetricsRepository();
 
+const ANOMALY_WINDOW_SIZE = 5;
+const ANOMALY_THRESHOLD_DURATION = 1.3; // 30% increase
+const ANOMALY_THRESHOLD_JOB = 1.25;      // 25% increase
+
+const RUNNER_COSTS_PER_MINUTE: Record<string, number> = {
+  'ubuntu-latest': 0.008,
+  'windows-latest': 0.016,
+  'macos-latest': 0.08,
+  'self-hosted': 0,
+  'unknown': 0.008 
+};
+
+function inferJobCategory(name: string): string {
+  const n = name.toLowerCase();
+  if (n.includes('test') || n.includes('spec') || n.includes('e2e')) return 'test';
+  if (n.includes('build') || n.includes('compile') || n.includes('pack')) return 'build';
+  if (n.includes('lint') || n.includes('format') || n.includes('check')) return 'lint';
+  if (n.includes('deploy') || n.includes('publish') || n.includes('release')) return 'deploy';
+  if (n.includes('install') || n.includes('setup') || n.includes('dep')) return 'dependency';
+  return 'unknown';
+}
+
 export class MetricsService {
   
-  // --- Ingestion Logic ---
-
   async processMetrics(payload: MetricsPayload): Promise<void> {
     const { workflow, commit, jobs, test_summary, build_analysis, artifacts } = payload;
     
-    // 1. Auto-provision Project
     const projectId = await repo.upsertProject(workflow.name, workflow.html_url);
 
-    // 2. Normalize Data
     const normWorkflow: Workflow = {
       ...workflow,
       status: safeString(workflow.status, 'unknown'),
@@ -31,7 +49,16 @@ export class MetricsService {
         author: safeString(commit?.author, 'Unknown')
     };
 
-    // 3. Save Run
+    let totalCost = 0;
+    if (jobs) {
+        jobs.forEach(j => {
+            const dur = j.duration_seconds || 0;
+            const type = j.runner_type || 'unknown';
+            const rate = RUNNER_COSTS_PER_MINUTE[type] ?? RUNNER_COSTS_PER_MINUTE['unknown'];
+            totalCost += (dur / 60) * rate;
+        });
+    }
+
     await repo.upsertWorkflowRun(
         normWorkflow, 
         projectId, 
@@ -39,11 +66,10 @@ export class MetricsService {
         jobs, 
         test_summary || {}, 
         build_analysis || {}, 
-        artifacts || []
+        artifacts || [],
+        totalCost
     );
   }
-
-  // --- Read Logic ---
 
   async getPipelines(): Promise<string[]> {
     return await repo.getPipelines();
@@ -57,6 +83,7 @@ export class MetricsService {
       total_runs: parseInt(stats.total_runs, 10),
       success_rate: parseFloat(successRate.toFixed(1)),
       median_duration: stats.median_duration ? parseFloat(String(stats.median_duration)) : 0,
+      total_cost: stats.total_cost ? parseFloat(stats.total_cost) : 0,
     };
   }
 
@@ -78,23 +105,23 @@ export class MetricsService {
 
   async getDurationAnalysis(pipeline?: string) {
     const runs = await repo.getDurationAnalysis(pipeline);
-    const windowSize = 5;
-    const anomalyThreshold = 1.3;
 
     return runs.map((run, index, allRuns) => {
-      let rollingAvg = null;
+      let cumulativeAvg = null;
       let is_anomaly = false;
 
+      // Cumulative average (Lifetime)
       const window = allRuns.slice(0, index + 1);
       const sum = window.reduce((acc: number, cur: WorkflowRunRow) => acc + cur.duration_seconds, 0);
-      rollingAvg = sum / (index + 1);
+      cumulativeAvg = sum / (index + 1);
 
-      if (index >= windowSize) {
-        const anomalyWindow = allRuns.slice(index - windowSize, index);
+      // Anomaly detection using Sliding Window (Previous N runs)
+      if (index >= ANOMALY_WINDOW_SIZE) {
+        const anomalyWindow = allRuns.slice(index - ANOMALY_WINDOW_SIZE, index);
         const anomalySum = anomalyWindow.reduce((acc: number, cur: WorkflowRunRow) => acc + cur.duration_seconds, 0);
-        const anomalyAvg = anomalySum / windowSize;
+        const slidingWindowAvg = anomalySum / ANOMALY_WINDOW_SIZE;
 
-        if (run.duration_seconds > anomalyAvg * anomalyThreshold) {
+        if (run.duration_seconds > slidingWindowAvg * ANOMALY_THRESHOLD_DURATION) {
           is_anomaly = true;
         }
       }
@@ -103,53 +130,57 @@ export class MetricsService {
         ...run,
         name: new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ` (#${run.run_number})`,
         duration: run.duration_seconds,
-        rolling_avg: rollingAvg ? parseFloat(rollingAvg.toFixed(2)) : null,
+        rolling_avg: cumulativeAvg ? parseFloat(cumulativeAvg.toFixed(2)) : null,
         is_anomaly: is_anomaly,
       };
     });
   }
 
   async getJobBreakdown(pipeline?: string) {
-    const historySize = 5;
+    const historySize = ANOMALY_WINDOW_SIZE;
     const runs = await repo.getJobBreakdown(historySize, pipeline);
-    const anomalyThreshold = 1.25;
 
     if (runs.length === 0) {
-      return { pipeline_name: 'N/A', commit_message: 'N/A', jobs: [] };
+      return { pipeline_name: 'N/A', commit_message: 'N/A', commit_sha: 'N/A', jobs: [] };
     }
     
     if (runs.length < 2) {
       const mostRecentRun = runs[0];
       const jobs = mostRecentRun.jobs.map((job: Job) => ({
         job_name: job.name,
+        job_category: inferJobCategory(job.name),
         status: job.status,
         current_duration: job.duration_seconds,
         historical_avg: null,
         historical_durations: [],
         percent_change: null,
         is_anomaly: false,
+        last_healthy_run_sha: null
       }));
       return {
         pipeline_name: mostRecentRun.workflow_name,
         commit_message: mostRecentRun.commit_message,
+        commit_sha: mostRecentRun.commit_sha,
         jobs: jobs,
       };
     }
 
     const mostRecentRun = runs[0];
     const historicalRuns = runs.slice(1);
-    const historicalData: { [key: string]: { durations: number[] } } = {};
+    const historicalData: { [key: string]: { durations: number[], lastHealthySha: string | null } } = {};
 
     for (const run of historicalRuns) {
       for (const job of run.jobs) {
         if (!historicalData[job.name]) {
-          historicalData[job.name] = { durations: [] };
+          historicalData[job.name] = { durations: [], lastHealthySha: null };
         }
         if (job.status === 'success') {
-            // Check for null duration before pushing
             const dur = job.duration_seconds;
             if (dur !== null) {
                 historicalData[job.name].durations.push(dur);
+            }
+            if (!historicalData[job.name].lastHealthySha && run.commit_sha) {
+                historicalData[job.name].lastHealthySha = run.commit_sha;
             }
         }
       }
@@ -169,7 +200,7 @@ export class MetricsService {
 
       if (historicalAvg && historicalAvg > 0 && job.status === 'success' && job.duration_seconds !== null) {
         percentChange = ((job.duration_seconds - historicalAvg) / historicalAvg) * 100;
-        if (percentChange > (anomalyThreshold - 1) * 100) {
+        if (percentChange > (ANOMALY_THRESHOLD_JOB - 1) * 100) {
           isAnomaly = true;
         }
       } else if (job.status === 'failure') {
@@ -178,18 +209,21 @@ export class MetricsService {
 
       return {
         job_name: job.name,
+        job_category: inferJobCategory(job.name),
         status: job.status,
         current_duration: job.duration_seconds,
         historical_avg: historicalAvg ? parseFloat(historicalAvg.toFixed(2)) : null,
         historical_durations: historicalDurations,
         percent_change: percentChange ? parseFloat(percentChange.toFixed(1)) : null,
         is_anomaly: isAnomaly,
+        last_healthy_run_sha: history ? history.lastHealthySha : null
       };
     });
 
     return {
       pipeline_name: mostRecentRun.workflow_name,
       commit_message: mostRecentRun.commit_message,
+      commit_sha: mostRecentRun.commit_sha,
       jobs: breakdown,
     };
   }
