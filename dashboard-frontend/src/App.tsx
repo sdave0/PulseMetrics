@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Dot } from 'recharts';
 import './App.css';
-import ReactMarkdown from 'react-markdown';
+
 
 interface Stats {
   total_runs: number;
@@ -285,7 +285,7 @@ ${JSON.stringify(investigationInputs, null, 2)}
     if (aiSummary) {
         try {
             report = JSON.parse(aiSummary);
-        } catch (e) {
+        } catch {
             report = { summary: aiSummary };
         }
     }
