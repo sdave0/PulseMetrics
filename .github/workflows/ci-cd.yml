@@ -59,10 +59,10 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci
+        run: cd metrics-collector && npm ci
       
       - name: Run tests
-        run: npm test --silent -- --reporter=json > test-results.json || true
+        run: cd metrics-collector && npm test --silent -- --reporter=json > ../test-results.json || true
 
       - name: Upload test results
         if: always()
@@ -88,10 +88,10 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci
+        run: cd dashboard-frontend && npm ci
       
       - name: Run ESLint
-        run: npm run lint
+        run: cd dashboard-frontend && npm run lint
 
   build:
     name: Build
@@ -109,10 +109,14 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci
+        run: |
+          cd metrics-collector && npm ci
+          cd ../dashboard-frontend && npm ci
       
       - name: Build project
-        run: npm run build > build-log.txt 2>&1
+        run: |
+          cd metrics-collector && npm run build
+          cd ../dashboard-frontend && npm run build
 
       - name: Upload build log
         if: always()
@@ -132,8 +136,10 @@ jobs:
     name: Docker Build and Push
     runs-on: ubuntu-latest
     needs: [build]
+    if: needs.check-changes.outputs.should_run == 'true'
     env:
       REGISTRY: ghcr.io
+      DOCKER_BUILD_CONTEXT: demo-app
     outputs:
       image_tag: ${{ steps.set_output.outputs.image_tag }}
     steps:
@@ -172,7 +178,7 @@ jobs:
       - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ${{ env.DOCKER_BUILD_CONTEXT }}
           push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -193,7 +199,7 @@ jobs:
       - name: Push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ${{ env.DOCKER_BUILD_CONTEXT }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

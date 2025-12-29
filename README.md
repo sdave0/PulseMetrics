@@ -4,14 +4,19 @@
 
 # Pulse
 
-While standard CI providers focus on the status of the current run, Pulse focuses on **longitudinal performance trends** to detect silent regressions that accumulate as technical debt.
+Most CI systems answer one question: *did the last run pass?* 
 
-**Configure Pulse by adding a few lines to your workflow, and tracking begins immediately.**
+A green check can hide the wasted CI time nobody tracks, flaky tests nobody fixes, and regressions that quietly slip into production.
+
+Pulse continuously tracks **pipeline health**, spotting **reliability decay**, **slow-success patterns**, and **behavioral drift** so problems are caught before they trigger outages or waste compute.
+
+
+Integration requires just a single workflow step. No agents, no sidecars, and no manual provisioning.
 
 ![Pulse Dashboard Overview](docs/images/pulse-ui-01.png)
 
-
-Designed for developers and DevOps engineers responsible for maintaining CI reliability across multiple repositories who want faster signal and lower debugging overhead.
+### Who This Is For
+Built for engineering teams running 50+ workflows across multiple repos, where 1% flakiness costs hours of developer time, drives repeated triage, and burns compute every week.
 
 ## Key Features
 
@@ -20,34 +25,36 @@ Before invoking AI, Pulse instantly scans logs against a library of known error 
 ![Anomaly Detection and Heuristics](docs/images/pulse-ui-02.png)
 
 ### Statistical Drift Detection
-5-run rolling baselines filter temporary noise (runner variance, network issues) while flagging true performance drift. Detects both failures *and* slow-success regressions that traditional alerts miss.
+5-run rolling baselines filter temporary noise and surface both failures and slow-success regressions that traditional alerts miss.
+
 
 ### Context-Aware AI Root Cause Analysis  
-When anomalies occur, AI correlates failure logs with commit diffs to pinpoint which file changes likely caused the regression—no manual log diving required.
+AI correlates failure logs with commit diffs to narrow down which file changes are most likely associated with the regression, reducing investigation time from hours to minutes.
 <p align="center">
   <img src="docs/images/pulse-ui-ai.gif" alt="AI Analysis Demo" width="300">
 </p>
 
 ### Zero-Config Dynamic Ingestion
-Automatically discovers repositories and job steps from GitHub Actions webhooks. Schema changes, job renames, and missing fields don't break historical analysis - new workflows are self-provisioning on first run.
+GitHub Actions webhooks are ingested without predefined schemas.
+Job renames, new steps, and missing fields do not invalidate historical data; new workflows are incorporated automatically on first execution.
 
 ### Cross-Repository Visibility
 Provides a unified view across repositories, enabling teams to analyze CI performance trends at the organization level rather than per-project silos.
 
-### Cost Attribution (Supplementary)
+### Resource & Cost Efficiency
 Estimates CI/CD compute costs per workflow to help teams identify expensive pipelines and correlate performance regressions with cost spikes.
 
 ## Design Decisions & Constraints
 
 **Architecture Choices**
-* Synchronous Webhook Processing: Prioritized operational simplicity over high throughput. While this creates a ceiling of ~10 req/sec, it eliminated the need for a message queue (Redis/RabbitMQ) for this MVP
-* On-Demand AI: Controls cost and avoids unnecessary LLM calls. Analysis triggered by user intent, not every commit.
-* Rolling Baseline Detection: Adapts to changing codebases; historical flags may shift
+* Synchronous Webhook Processing: Operational simplicity was prioritized over peak throughput. This caps sustained ingestion at ~10 req/sec but avoids introducing a queueing layer in the MVP.
+* On-Demand AI: AI-assisted analysis is triggered explicitly by user intent rather than on every run, controlling cost and avoiding unnecessary LLM calls.
+* Rolling Baseline Detection: Baselines adapt as code and infrastructure evolve, accepting that historical flags may shift instead of enforcing static thresholds.
 
 **Known Limitations**
 * Push-event ingestion only: misses manual or scheduled runs
 * Single-instance deployment: database connection pool can saturate under bursts
-* No webhook retry logic: downtime can create data gaps
+* No webhook retry mechanism; ingestion downtime can result in permanent data gaps
 
 **Explicitly Out of Scope**
 * Pulse monitors pipelines but does not orchestrate them (no job retries, pipeline triggering, or cross-workflow dependency tracking)
