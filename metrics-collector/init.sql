@@ -19,11 +19,13 @@ CREATE TABLE IF NOT EXISTS workflow_runs (
     created_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
     commit_sha VARCHAR(255),
+    commit_parent_sha VARCHAR(255),
     commit_message TEXT,
     commit_author VARCHAR(255),
     jobs JSONB,
     test_summary JSONB,
     build_analysis JSONB,
+    commit_analysis JSONB,
     artifacts JSONB,
     received_at TIMESTAMPTZ DEFAULT NOW(),
     CONSTRAINT fk_project FOREIGN KEY (project_id) REFERENCES projects(id)

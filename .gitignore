@@ -27,14 +27,19 @@ dist-ssr
 progressfile.md
 
 # Environment files
-/metrics-collector/.env
-# Documentation & Context
-UPGRADE_SUMMARY.md
-CODEBASE_CONTEXT.md
+# Environment files
+*.env
+.env.*
 
-
-rules.txt
-pulse-action-setup.md
-docs/
+# Scripts
+scripts/rules.txt
 pulse-action/test-local.js
-upgrade-plan.txt
+
+# Internal Documentation
+docs/progressfile.md
+docs/frontend-wireframe.txt
+docs/upgrade-plan.txt
+docs/CODEBASE_CONTEXT.md
+docs/UPGRADE_SUMMARY.md
+docs/DATA_ARCHITECTURE.md
+docs/frontend_spec.md

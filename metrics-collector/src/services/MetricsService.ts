@@ -1,6 +1,6 @@
-import { MetricsRepository } from '../db/MetricsRepository';
+import { MetricsRepository } from '../repository';
 import { MetricsPayload, Workflow, WorkflowRunRow, Job } from '../types';
-import { safeDuration, safeString, safeDate } from '../utils/dataUtils';
+import { safeDuration, safeString, safeDate } from '../utils';
 
 const repo = new MetricsRepository();
 
@@ -13,7 +13,7 @@ const RUNNER_COSTS_PER_MINUTE: Record<string, number> = {
   'windows-latest': 0.016,
   'macos-latest': 0.08,
   'self-hosted': 0,
-  'unknown': 0.008 
+  'unknown': 0.008
 };
 
 function inferJobCategory(name: string): string {
@@ -27,10 +27,10 @@ function inferJobCategory(name: string): string {
 }
 
 export class MetricsService {
-  
+
   async processMetrics(payload: MetricsPayload): Promise<void> {
-    const { workflow, commit, jobs, test_summary, build_analysis, artifacts } = payload;
-    
+    const { workflow, commit, jobs, test_summary, build_analysis, artifacts, commit_analysis } = payload;
+
     const projectId = await repo.upsertProject(workflow.name, workflow.html_url);
 
     const normWorkflow: Workflow = {
@@ -44,30 +44,32 @@ export class MetricsService {
     };
 
     const normCommit = {
-        sha: safeString(commit?.sha, '0000000'),
-        message: safeString(commit?.message, 'No message'),
-        author: safeString(commit?.author, 'Unknown')
+      sha: safeString(commit?.sha, '0000000'),
+      parent_sha: commit?.parent_sha || null,
+      message: safeString(commit?.message, 'No message'),
+      author: safeString(commit?.author, 'Unknown')
     };
 
     let totalCost = 0;
     if (jobs) {
-        jobs.forEach(j => {
-            const dur = j.duration_seconds || 0;
-            const type = j.runner_type || 'unknown';
-            const rate = RUNNER_COSTS_PER_MINUTE[type] ?? RUNNER_COSTS_PER_MINUTE['unknown'];
-            totalCost += (dur / 60) * rate;
-        });
+      jobs.forEach(j => {
+        const dur = j.duration_seconds || 0;
+        const type = j.runner_type || 'unknown';
+        const rate = RUNNER_COSTS_PER_MINUTE[type] ?? RUNNER_COSTS_PER_MINUTE['unknown'];
+        totalCost += (dur / 60) * rate;
+      });
     }
 
     await repo.upsertWorkflowRun(
-        normWorkflow, 
-        projectId, 
-        normCommit, 
-        jobs, 
-        test_summary || {}, 
-        build_analysis || {}, 
-        artifacts || [],
-        totalCost
+      normWorkflow,
+      projectId,
+      normCommit,
+      jobs,
+      test_summary || {},
+      build_analysis || {},
+      artifacts || [],
+      totalCost,
+      commit_analysis || {}
     );
   }
 
@@ -78,12 +80,12 @@ export class MetricsService {
   async getStats(pipeline?: string) {
     const stats = await repo.getStats(pipeline);
     const successRate = (parseInt(stats.total_runs, 10) > 0) ? (parseInt(stats.successful_runs, 10) / parseInt(stats.total_runs, 10)) * 100 : 0;
-    
+
     return {
       total_runs: parseInt(stats.total_runs, 10),
       success_rate: parseFloat(successRate.toFixed(1)),
-      median_duration: stats.median_duration ? parseFloat(String(stats.median_duration)) : 0,
-      total_cost: stats.total_cost ? parseFloat(stats.total_cost) : 0,
+      median_duration: (stats.median_duration !== null && stats.median_duration >= 0) ? parseFloat(String(stats.median_duration)) : null,
+      total_cost: (stats.total_cost !== null && parseFloat(stats.total_cost) >= 0) ? parseFloat(stats.total_cost) : null,
     };
   }
 
@@ -95,7 +97,7 @@ export class MetricsService {
     const offset = (page - 1) * limit;
     const { runs, totalRuns } = await repo.getRunsTable(limit, offset, pipeline);
     const totalPages = Math.ceil(totalRuns / limit);
-    
+
     return {
       runs,
       totalPages,
@@ -110,22 +112,20 @@ export class MetricsService {
       let cumulativeAvg = null;
       let is_anomaly = false;
 
-      // Cumulative average (Lifetime)
       const window = allRuns.slice(0, index + 1);
-      const sum = window.reduce((acc: number, cur: WorkflowRunRow) => acc + cur.duration_seconds, 0);
+      const sum = window.reduce((acc: number, cur: WorkflowRunRow) => acc + Math.max(0, cur.duration_seconds ?? 0), 0);
       cumulativeAvg = sum / (index + 1);
 
-      // Anomaly detection using Sliding Window (Previous N runs)
       if (index >= ANOMALY_WINDOW_SIZE) {
         const anomalyWindow = allRuns.slice(index - ANOMALY_WINDOW_SIZE, index);
-        const anomalySum = anomalyWindow.reduce((acc: number, cur: WorkflowRunRow) => acc + cur.duration_seconds, 0);
+        const anomalySum = anomalyWindow.reduce((acc: number, cur: WorkflowRunRow) => acc + (cur.duration_seconds || 0), 0);
         const slidingWindowAvg = anomalySum / ANOMALY_WINDOW_SIZE;
 
-        if (run.duration_seconds > slidingWindowAvg * ANOMALY_THRESHOLD_DURATION) {
+        if (run.duration_seconds !== null && run.duration_seconds > slidingWindowAvg * ANOMALY_THRESHOLD_DURATION) {
           is_anomaly = true;
         }
       }
-      
+
       return {
         ...run,
         name: new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ` (#${run.run_number})`,
@@ -136,14 +136,14 @@ export class MetricsService {
     });
   }
 
-  async getJobBreakdown(pipeline?: string) {
+  async getJobBreakdown(pipeline?: string, runId?: number) {
     const historySize = ANOMALY_WINDOW_SIZE;
-    const runs = await repo.getJobBreakdown(historySize, pipeline);
+    const runs = await repo.getJobBreakdown(historySize, pipeline, runId);
 
     if (runs.length === 0) {
       return { pipeline_name: 'N/A', commit_message: 'N/A', commit_sha: 'N/A', jobs: [] };
     }
-    
+
     if (runs.length < 2) {
       const mostRecentRun = runs[0];
       const jobs = mostRecentRun.jobs.map((job: Job) => ({
@@ -155,7 +155,9 @@ export class MetricsService {
         historical_durations: [],
         percent_change: null,
         is_anomaly: false,
-        last_healthy_run_sha: null
+        last_healthy_run_sha: null,
+        heuristic_summary: null,
+        attribution_confidence: null
       }));
       return {
         pipeline_name: mostRecentRun.workflow_name,
@@ -167,21 +169,22 @@ export class MetricsService {
 
     const mostRecentRun = runs[0];
     const historicalRuns = runs.slice(1);
-    const historicalData: { [key: string]: { durations: number[], lastHealthySha: string | null } } = {};
+
+    const historicalData: { [key: string]: { durations: number[], baselineRun: WorkflowRunRow | null } } = {};
 
     for (const run of historicalRuns) {
       for (const job of run.jobs) {
         if (!historicalData[job.name]) {
-          historicalData[job.name] = { durations: [], lastHealthySha: null };
+          historicalData[job.name] = { durations: [], baselineRun: null };
         }
         if (job.status === 'success') {
-            const dur = job.duration_seconds;
-            if (dur !== null) {
-                historicalData[job.name].durations.push(dur);
-            }
-            if (!historicalData[job.name].lastHealthySha && run.commit_sha) {
-                historicalData[job.name].lastHealthySha = run.commit_sha;
-            }
+          const dur = job.duration_seconds;
+          if (dur !== null) {
+            historicalData[job.name].durations.push(dur);
+          }
+          if (!historicalData[job.name].baselineRun) {
+            historicalData[job.name].baselineRun = run;
+          }
         }
       }
     }
@@ -189,12 +192,12 @@ export class MetricsService {
     const breakdown = mostRecentRun.jobs.map((job: Job) => {
       const history = historicalData[job.name];
       const historicalDurations = history ? history.durations.reverse() : [];
-      
+
       let historicalAvg = null;
       if (historicalDurations.length > 0) {
         historicalAvg = historicalDurations.reduce((a: number, b: number) => a + b, 0) / historicalDurations.length;
       }
-      
+
       let percentChange = null;
       let isAnomaly = false;
 
@@ -207,6 +210,45 @@ export class MetricsService {
         isAnomaly = true;
       }
 
+      const baseline = history ? history.baselineRun : null;
+      let heuristicSummary = null;
+      let attributionConfidence = null;
+
+      if (isAnomaly && baseline) {
+        const parentSha = mostRecentRun.commit_parent_sha;
+        const baselineSha = baseline.commit_sha;
+
+        if (parentSha && baselineSha && parentSha === baselineSha) {
+          attributionConfidence = "high";
+        } else {
+          attributionConfidence = "medium";
+        }
+
+        const summaries = [];
+
+        const currentTests = mostRecentRun.test_summary?.total || 0;
+        const baselineTests = baseline.test_summary?.total || 0;
+
+        if (baselineTests > 0 && currentTests > baselineTests * 1.05) {
+          const delta = currentTests - baselineTests;
+          const pct = Math.round((delta / baselineTests) * 100);
+          summaries.push(`Test files increased ${baselineTests} -> ${currentTests} (+${pct}%)`);
+        }
+
+        const currentAnalysis = mostRecentRun.commit_analysis;
+        if (currentAnalysis?.lockfile_changed) {
+          summaries.push("Lockfile changed");
+        }
+
+        if (currentAnalysis?.total_files && currentAnalysis.total_files > 20) {
+          summaries.push(`High code churn (${currentAnalysis.total_files} files)`);
+        }
+
+        if (summaries.length > 0) {
+          heuristicSummary = summaries.join(". ") + ".";
+        }
+      }
+
       return {
         job_name: job.name,
         job_category: inferJobCategory(job.name),
@@ -216,7 +258,9 @@ export class MetricsService {
         historical_durations: historicalDurations,
         percent_change: percentChange ? parseFloat(percentChange.toFixed(1)) : null,
         is_anomaly: isAnomaly,
-        last_healthy_run_sha: history ? history.lastHealthySha : null
+        last_healthy_run_sha: baseline ? baseline.commit_sha : null,
+        heuristic_summary: heuristicSummary,
+        attribution_confidence: attributionConfidence
       };
     });
 
@@ -246,7 +290,7 @@ export class MetricsService {
       return runData;
     });
 
-    return { 
+    return {
       chartData,
       jobNames: Array.from(jobNames)
     };

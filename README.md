@@ -1,65 +1,65 @@
+<p align="center">
+  <img src="docs/icon-p.png" alt="Pulse icon" width="120" />
+</p>
+
 # Pulse
 
-While standard CI providers focus on the current run status, Pulse focuses on historical trends to determine whether a pipeline is actually healthy.
-
-Pulse captures the full history of CI/CD runs, detects silent performance regressions, and enables fast, context-aware debugging using AI.
+While standard CI providers focus on the status of the current run, Pulse focuses on **longitudinal performance trends** to detect silent regressions that accumulate as technical debt.
 
 **Configure Pulse by adding a few lines to your workflow, and tracking begins immediately.**
 
-![Dashboard Overview - 1](docs/images/run7-p1-1.png)
-![Dashboard Overview - 2](docs/images/run6-p1-2.png)
-![Dashboard Overview - 3](docs/images/run6-p2.png)
-
-## Why Pulse?
-
-### 1. Dynamic Ingestion (Zero Configuration)
-Pulse eliminates hardcoded pipelines and fragile schemas.
-
-- **Self-Provisioning:** New repositories and job steps are automatically discovered and persisted the moment CI webhooks arrive.
-- **Schema Resilience:** Job renames, missing fields, and provider-specific payload differences do not break historical analysis.
-- **Zero Onboarding Cost:** Teams do not need to pre-register workflows or maintain dashboard definitions.
-
-This allows Pulse to scale across many repositories without manual intervention.
-
----
-
-### 2. Statistical Anomaly Detection (Signal, Not Noise)
-Pulse focuses on detecting *meaningful* deviations rather than raw failures.
-
-- **Rolling Baselines:** Uses a 5-run rolling average to smooth transient network or runner noise.
-- **Drift Detection:** Flags job steps that exceed a configurable percentage deviation from historical behavior.
-- **Failure-Agnostic:** Detects both failed jobs and slow-success regressions that traditional alerts ignore.
-
-Anomalies act as the trigger point for deeper investigation rather than as the final output.
-
----
-
-### 3. AI-Assisted Debugging (Just-in-Time Investigation)
-Pulse does not use AI to summarize dashboards.  
-It uses AI to **investigate anomalies on demand**.
-
-- **Event-Driven Analysis:** AI is invoked only when a job fails or deviates significantly from its baseline.
-- **Context-Aware Inputs:** The assistant receives job metadata, historical baselines, recent runs, and commit boundaries.
-- **Action-Oriented Output:** Produces structured investigation reports with likely causes and concrete next steps.
-- **Agent-Ready:** Designed to integrate with IDEs or autonomous agents via standardized protocols (e.g. MCP), enabling headless debugging without context switching.
-
-This shifts CI debugging from manual log hunting to automated, focused investigation.
-
----
-
-### 4. Cost Attribution (Supplementary)
-Pulse can optionally estimate CI/CD compute costs per workflow to help teams identify expensive pipelines.
-
-This feature is intentionally lightweight and secondary to debugging and developer productivity.
+![Pulse Dashboard Overview](docs/images/pulse-ui-01.png)
 
 
-### 5. Cross-Repository Visibility
-Pulse provides a unified view across repositories, enabling teams to analyze CI performance trends at the organization level rather than per-project silos.
+Designed for developers and DevOps engineers responsible for maintaining CI reliability across multiple repositories who want faster signal and lower debugging overhead.
 
+## Key Features
+
+### Heuristic Failure Classification
+Before invoking AI, Pulse instantly scans logs against a library of known error patterns (e.g., `ETIMEDOUT`, `Lockfile Changed`, `OutOfMemory`). This provides immediate, low-cost categorization for common failures alongside a **Confidence Score**.
+![Anomaly Detection and Heuristics](docs/images/pulse-ui-02.png)
+
+### Statistical Drift Detection
+5-run rolling baselines filter temporary noise (runner variance, network issues) while flagging true performance drift. Detects both failures *and* slow-success regressions that traditional alerts miss.
+
+### Context-Aware AI Root Cause Analysis  
+When anomalies occur, AI correlates failure logs with commit diffs to pinpoint which file changes likely caused the regression—no manual log diving required.
+<p align="center">
+  <img src="docs/images/pulse-ui-ai.gif" alt="AI Analysis Demo" width="300">
+</p>
+
+### Zero-Config Dynamic Ingestion
+Automatically discovers repositories and job steps from GitHub Actions webhooks. Schema changes, job renames, and missing fields don't break historical analysis - new workflows are self-provisioning on first run.
+
+### Cross-Repository Visibility
+Provides a unified view across repositories, enabling teams to analyze CI performance trends at the organization level rather than per-project silos.
+
+### Cost Attribution (Supplementary)
+Estimates CI/CD compute costs per workflow to help teams identify expensive pipelines and correlate performance regressions with cost spikes.
+
+## Design Decisions & Constraints
+
+**Architecture Choices**
+* Synchronous Webhook Processing: Prioritized operational simplicity over high throughput. While this creates a ceiling of ~10 req/sec, it eliminated the need for a message queue (Redis/RabbitMQ) for this MVP
+* On-Demand AI: Controls cost and avoids unnecessary LLM calls. Analysis triggered by user intent, not every commit.
+* Rolling Baseline Detection: Adapts to changing codebases; historical flags may shift
+
+**Known Limitations**
+* Push-event ingestion only: misses manual or scheduled runs
+* Single-instance deployment: database connection pool can saturate under bursts
+* No webhook retry logic: downtime can create data gaps
+
+**Explicitly Out of Scope**
+* Pulse monitors pipelines but does not orchestrate them (no job retries, pipeline triggering, or cross-workflow dependency tracking)
+
+
+## System Architecture
+![Pulse System Architecture](docs/images/architecture-diagram.png)
 
 ## Integration
 
-To start tracking a repo, add this step to the end of your `.github/workflows/ci.yml`. See **[pulse-action-setup.md](./pulse-action-setup.md)** for the full guide.
+To start tracking a repo, add this step to the end of your `.github/workflows/ci.yml`. See **[pulse-action-setup.md](docs/pulse-action-setup.md)** for the full guide.
+
 
 ```yaml
 - name: Send Metrics to Pulse
@@ -74,7 +74,7 @@ To start tracking a repo, add this step to the end of your `.github/workflows/ci
 
 1.  **Start Database:**
     ```bash
-    docker-compose up -d
+    docker-compose up -d postgres
     ```
 
 2.  **Start Backend:**
@@ -91,3 +91,4 @@ To start tracking a repo, add this step to the end of your `.github/workflows/ci
 
 *   **Frontend:** React, Vite, Recharts
 *   **Backend:** Node.js, Express, PostgreSQL
+

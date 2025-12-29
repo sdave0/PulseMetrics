@@ -35,6 +35,49 @@ async function run() {
     });
     const jobs = jobsResponse.data.jobs;
 
+    let commitAnalysis = null;
+    let parentSha = null;
+    try {
+        const commitData = await octokit.rest.repos.getCommit({
+            owner,
+            repo,
+            ref: workflowRun.head_sha,
+        });
+        
+        if (commitData.data.parents && commitData.data.parents.length > 0) {
+            parentSha = commitData.data.parents[0].sha;
+        }
+
+        const files = commitData.data.files || [];
+        const totalFiles = files.length;
+        let lockfileChanged = false;
+        let testFilesCount = 0;
+        let srcFilesCount = 0;
+
+        for (const f of files) {
+            if (f.filename.includes('package-lock.json') || f.filename.includes('yarn.lock') || f.filename.includes('pnpm-lock.yaml')) {
+                lockfileChanged = true;
+            }
+            if (f.filename.match(/test|spec|e2e/i)) {
+                testFilesCount++;
+            }
+            if (f.filename.match(/^src\//) || f.filename.match(/\.ts$|\.js$|\.go$|\.py$|\.java$/)) {
+                srcFilesCount++;
+            }
+        }
+
+        commitAnalysis = {
+            total_files: totalFiles,
+            lockfile_changed: lockfileChanged,
+            test_files_count: testFilesCount,
+            src_files_count: srcFilesCount
+        };
+        console.log(`Commit Analysis: ${totalFiles} files changed. Lockfile: ${lockfileChanged}`);
+
+    } catch (e) {
+        console.warn(`Failed to fetch commit details: ${e.message}`);
+    }
+
     const artifactsResponse = await octokit.rest.actions.listWorkflowRunArtifacts({
       owner,
       repo,
@@ -101,10 +144,13 @@ async function run() {
     if (workflowRun.head_commit) {
       payload.commit = {
         sha: workflowRun.head_commit.id,
+        parent_sha: parentSha,
         message: workflowRun.head_commit.message,
         author: workflowRun.head_commit.author.name,
       };
     }
+
+    payload.commit_analysis = commitAnalysis;
 
     payload.jobs = jobs.map(job => {
       let runnerType = 'unknown';
