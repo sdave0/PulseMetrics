@@ -42,6 +42,7 @@ jobs:
             Dockerfile
             .dockerignore
             index.html
+            .github/workflows/**
 
   test:
     name: Unit Testing

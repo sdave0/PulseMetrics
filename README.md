@@ -1,4 +1,4 @@
-<p align="center">
+<p>
   <img src="docs/icon-p.png" alt="Pulse icon" width="120" />
 </p>
 
