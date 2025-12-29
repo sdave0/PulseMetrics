@@ -47,7 +47,7 @@ export const generateAiSummary = async (prompt: string): Promise<AiReport> => {
     if (response.data && response.data.summary) {
         try {
             return JSON.parse(response.data.summary);
-        } catch (e) {
+        } catch {
             return { summary: response.data.summary };
         }
     }

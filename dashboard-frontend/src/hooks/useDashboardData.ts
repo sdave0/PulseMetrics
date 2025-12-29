@@ -7,13 +7,14 @@ import {
   fetchJobBreakdown,
   generateAiSummary
 } from '../services/api';
-import { formatCommit } from '../utils/formatters';
+
 import type {
   Stats,
   TableData,
   AnomalyData,
   JobBreakdownResponse,
-  AiReport
+  AiReport,
+  TableRun
 } from '../types';
 
 export const useDashboardData = () => {

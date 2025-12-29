@@ -54,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({ pipelines, selectedPipeline, onP
                         <span className="text-xs text-slate-500 font-medium">Period:</span>
                         <select
                             value={dateRange}
-                            onChange={(e) => onDateRangeChange(e.target.value as any)}
+                            onChange={(e) => onDateRangeChange(e.target.value as '24h' | '7d' | '30d' | 'all')}
                             className="bg-transparent border-none focus:ring-0 text-xs font-medium text-slate-300 cursor-pointer hover:text-white transition-colors p-0 pr-6"
                         >
                             <option value="24h" className="bg-slate-900">Last 24 Hours</option>

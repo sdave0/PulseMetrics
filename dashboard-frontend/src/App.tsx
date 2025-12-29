@@ -15,7 +15,6 @@ import {
   formatCount,
   formatCommit
 } from './utils/formatters';
-import type { TableRun } from './types';
 import './index.css';
 
 function Dashboard() {
