@@ -1,0 +1,5 @@
+**/dist/**
+**/node_modules/**
+pulse-action/dist/
+metrics-collector/dist/
+dashboard-frontend/dist/

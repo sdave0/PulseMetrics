@@ -1,0 +1,10 @@
+﻿
+> metrics-collector@1.0.0 build
+> tsc
+
+src/services/AiService.ts(4,18): error TS2304: Cannot find name 'GoogleGenerativeAI'.
+src/services/AiService.ts(7,10): error TS2304: Cannot find name 'config'.
+src/services/AiService.ts(10,22): error TS2304: Cannot find name 'GoogleGenerativeAI'.
+src/services/AiService.ts(10,41): error TS2304: Cannot find name 'config'.
+src/services/AiService.ts(18,10): error TS2304: Cannot find name 'config'.
+src/services/AiService.ts(94,10): error TS2304: Cannot find name 'config'.

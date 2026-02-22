@@ -1,0 +1,23 @@
+name: Pipeline Profiler
+on:
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Collect and Send Metrics
+        uses: ./pulse-action
+        with:
+          webhook_url: ${{ secrets.WEBHOOK_URL }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}

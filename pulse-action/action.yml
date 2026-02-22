@@ -1,0 +1,13 @@
+name: 'Pulse Metrics Collector'
+description: 'Collects CI/CD metrics from a workflow run and sends them to the Pulse Dashboard.'
+inputs:
+  webhook_url:
+    description: 'The URL of the Pulse Collector API (e.g., https://pulse.example.com/metrics)'
+    required: true
+  github_token:
+    description: 'GitHub Token to fetch workflow details'
+    required: true
+    default: '${{ github.token }}'
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
