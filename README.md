@@ -1,66 +1,110 @@
-# Pulse: Agentic CI/CD Observability Platform
+<p>
+<img src="docs/images/icon-p.png" alt="Pulse icon" width="120" /> 
+</p>
 
-## The Problem
-Traditional CI "green signals" are lagging indicators. They tell you a build formally passed, but they hide the slow creep of flakiness, the silent $40\%$ performance regressions, and the hidden compute costs that quietly drain engineering velocity. When a pipeline finally breaks, developers waste hours reading raw logs to find out *what* went wrong and *where* it started.
+# Pulse
+### Pipeline Degradation Intelligence for Modern CI
 
-## The Solution
-**Pulse** is an Agentic Observability Platform that watches the space between the green and red signals. Using a deterministic Decision Engine paired with a Model Context Protocol (MCP) server, Pulse provides context-aware Root Cause Analysis (RCA) before a minor regression costs you a deploy or a week of triage. 
+Most CI systems are binary: they tell you when a build passes or fails. But pipelines rarely fail overnight. Instead, reliability decays quietly over time. Flaky tests start to appear, build durations creep up, and small inefficiencies compound into structural instability and higher compute costs.
 
-It earns trust by being quiet when pipelines are healthy, and precise when they are not. The agent exists not to automate away engineers, but to instantly collapse the distance between *"something's wrong"* and *"here's why."*
+This phenomenon is often called **pipeline rot**, and Pulse is designed to detect it before it becomes a production issue.
 
----
+With rapid iteration loops and AI-assisted coding, teams are merging code faster than ever. This increased velocity often introduces subtle pipeline entropy that traditional event-based CI tools miss. Pulse shifts the focus from simple pass/fail events to monitoring the actual **trajectory** of your workflows, catching degradation early.
 
-## The "Soul" of the Architecture
-At its core, Pulse prevents AI hallucinations (and cost overruns) by orchestrating a **3-Stage Deterministic Signal Extraction** layer before any LLM is invoked:
-
-1. **Pattern Extraction:** Instantly categorizes jobs and identifies standard failure heuristics (e.g., Timeout, OOM, Dependency Error).
-2. **Drift Detection:** Maintains a 5-run rolling statistical baseline to flag silent duration regressions and stability decay.
-3. **Change Analysis:** Scans commit payloads for high-impact alterations (e.g., Lockfile modifications, intense code churn, $>5\%$ test count changes).
-
-These deterministic signals are fed into a **Decision Engine** that calculates an "AI-Worthiness Priority Score." The LLM is invoked *only* if the priority crosses the threshold (e.g., unknown anomalies, massive drift)—acting as an expert consultant rather than a noisy summarizer.
+<p>
+  <img src="docs/images/pulse-ui-01.png" alt="Pulse Dashboard Overview" width="100%" />
+</p>
 
 ---
 
-## Key Capabilities
+## How It Works
 
-1. ⚡ **Heuristic Failure Classification (Low-Cost):** Instantly classifies network timeouts, OOMs, and standard errors using deterministic logic without burning LLM tokens.
-2. 📉 **Statistical Drift Detection:** Employs a 5-run rolling baseline to catch the runs that "pass" but introduce $30\%$ performance regressions.
-3. 🤖 **MCP-Native Interface:** Pulse acts as a native MCP server, allowing external agents (like your local IDE) to directly query the `get_latest_failure_analysis` endpoint, making CI data instantly available to your development workflow.
+Under the hood, Pulse ingests your GitHub Actions webhooks and automatically builds a rolling statistical baseline for every job. It evaluates each run against historical patterns to identify duration drift, flakiness, and resource pressure — without requiring you to configure manual thresholds or alerting rules.
+
+When a pipeline's trajectory deviates significantly, Pulse raises an investigation signal and correlates the anomaly with recent commits to provide a structured Root Cause Analysis (RCA).
+
+```json
+{
+  "run_id": "gh_run_8472910",
+  "trajectory_status": "degrading",
+  "signal": "job 'jest_test_suite' duration +38% (4m12s -> 5m48s)",
+  "rca": {
+    "suspect_commit": "a1b2c3d",
+    "root_cause": "Added deep clone in utils/parser.ts inside the map function. Likely causing GC pauses.",
+    "remediation": "Check if deep clone is strictly necessary here. Consider shallow copy or moving the clone operation outside the loop.",
+    "confidence_score": 0.72
+  }
+}
+```
 
 ---
 
-## Tech Stack
+## Agentic Escalation
 
-| Component | Technology |
-| :--- | :--- |
-| **Backend API** | Node.js (v20+), Express.js, TypeScript |
-| **Database** | PostgreSQL 15 (Leveraging JSONB indexing) |
-| **AI / Agent** | Google Generative AI (Gemini 2.0 Flash) |
-| **Frontend** | React 19, Vite, Recharts, Tailwind CSS |
-| **Integration** | GitHub Actions Toolkit (`@actions/core`) |
-| **Protocol** | Model Context Protocol (MCP) via SSE |
+To keep signal quality high and compute costs predictable, Pulse does not run every webhook through an LLM. It relies on **deterministic classification first**, using statistical drift and known error heuristics mathematically.
+
+The system only escalates to an AI model when signals are ambiguous or highly impactful. In these cases, the LLM acts as a specialized consultant to pinpoint the responsible code changes — rather than just summarizing massive log dumps.
+
+<p align="center">
+  <img src="docs/images/pulse-ui-ai.gif" alt="AI Analysis Demo" width="300">
+</p>
 
 ---
+
+## Queryable CI Context (MCP)
+
+Pulse is built to be infrastructure, not just another dashboard. It exposes a native **Model Context Protocol (MCP) server**, which fundamentally changes how developers interact with CI failures.
+
+Instead of hunting down a failed action and copy-pasting raw logs into an LLM window, external coding agents and local IDE extensions can directly query Pulse for the exact failure context. Your autonomous agent can retrieve the structured RCA mid-debug and immediately start applying the fix in your codebase.
+
+
+<p>
+  <img src="docs/images/pulse-ui-02.png" alt="Anomaly Detection and Heuristics" width="100%" />
+</p>
+---
+
+## Technical Design & Scope
+
+Pulse is designed around **schema-free ingestion** using PostgreSQL JSONB, meaning job renames, missing fields, and new workflow steps never break your historical data. It currently supports push-event webhook streams via a single-instance deployment and processes telemetry synchronously.
+
+> For a deep dive into our signal extraction layers and architectural trade-offs, see [`docs/architecture.md`](docs/architecture.md).
+
+---
+
+## Integration
+
+Getting started requires adding just a single step to your existing workflow. There is no pipeline orchestration required, and workflows are detected automatically on their first run.
+
+```yaml
+- name: Send Metrics to Pulse
+  uses: ./pulse-action
+  if: always()
+  with:
+    webhook_url: ${{ secrets.PULSE_WEBHOOK_URL }}
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+---
+
+## System Architecture ![Pulse System Architecture](docs/images/architecture-diagram.png)
 
 ## Local Setup
 
-Launch the central Pulse nervous system locally in 3 simple steps:
-
-**1. Clone and Configure**
 ```bash
 git clone https://github.com/your-org/pulse.git
-cd pulse/ci-pipeline
-# Securely export your intended LLM API key for the Agent Service
-export GOOGLE_API_KEY="your-api-key-here"
+cd pulse
+export GOOGLE_API_KEY="your_gemini_api_key"
+
+# Start the database
+docker-compose up -d postgres
+
+# Start the ingestion API
+cd metrics-collector && npm run build && npm run start
+
+# Start the dashboard
+cd ../dashboard-frontend && npm run dev
 ```
 
-**2. Launch the Infrastructure**
-```bash
-# Spins up the Postgres Database, Metrics Collector, and Dashboard Frontend
-docker-compose up --build -d
-```
+---
 
-**3. View the Dashboard**
-Navigate to [http://localhost:8080](http://localhost:8080) to view the Pulse unified control plane.
-
-*(To configure your GitHub Actions to send telemetry to Pulse, hook up the [Pulse Action](./pulse-action/README.md) at the end of your workflow.)*
+**Stack:** Node.js · PostgreSQL · React · Gemini · MCP over SSE
