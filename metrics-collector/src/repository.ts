@@ -159,7 +159,7 @@ export class MetricsRepository {
 
     if (runId) {
       // If runId is provided, get that run AND previous runs (based on created_at)
-      // We use a subquery to get the created_at of the target run
+      // Use a subquery to get the created_at of the target run
       query += ` AND created_at <= (SELECT created_at FROM workflow_runs WHERE run_id = $${params.length + 1})`;
       params.push(runId);
     }

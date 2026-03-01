@@ -49,7 +49,7 @@ The React dashboard (`dashboard-frontend`) uses a unified custom hook, `useDashb
 ## 5. Agentic Interaction
 When the Decision Engine allows it, the LLM takes over as a specialized consultant rather than a generic summarizer.
 
-- **LLM Pipeline:** The `AiService` integrates with `GoogleGenerativeAI` utilizing the `gemini-2.0-flash-exp` model.
+- **LLM Pipeline:** The `AiService` integrates with `GoogleGenerativeAI` utilizing the `gemini-3-flash-preview` model (configurable via `LLM_MODEL`).
 - **Context Construction:** The system strictly passes the filtered `SignalBundle`—not raw, chaotic logs. The prompt construction logic injects known failure heuristics, specific $s$ duration comparisons, and recent commit events so the LLM has exact localized context.
 - **Structured Output:** The system prompt aggressively forces the LLM to reply in a strict JSON schema containing:
   `{ root_cause, confidence, remediation, relevant_files, summary }`

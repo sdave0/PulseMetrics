@@ -72,6 +72,7 @@ export interface RecurrenceSignal extends Signal {
 export interface SignalBundle {
   runId: number;
   workflowName: string;
+  status: string | null;
   patterns: PatternSignal[];
   drift: DriftSignal[];
   changes: ChangeSignal[];

@@ -23,7 +23,7 @@ export class AiService {
     }
 
     const model = this.genAI.getGenerativeModel({
-      model: config.LLM_MODEL || "gemini-2.0-flash-exp",
+      model: config.LLM_MODEL,
       generationConfig: {
         responseMimeType: "application/json"
       }
@@ -32,7 +32,7 @@ export class AiService {
     const prompt = this.constructPrompt(bundle);
     const systemPrompt = `
       You are PulseAI, an autonomous specialized CI/CD Reliability Agent.
-      Your goal is to identify the Root Cause of a pipeline failure based ONLY on the provided proprietary signals.
+      Your goal is to identify the Root Cause of a pipeline anomaly or failure based ONLY on the provided proprietary signals.
       
       Output strictly JSON:
       {
@@ -55,7 +55,14 @@ export class AiService {
   }
 
   private constructPrompt(bundle: SignalBundle): string {
-    let context = `Analyze Run #${bundle.runId} (${bundle.workflowName})\n\n`;
+    const isSuccess = bundle.status === 'success';
+    let context = `Analyze Run #${bundle.runId} (${bundle.workflowName})\n`;
+    context += `STATUS: ${isSuccess ? 'SUCCESS (But Anomalous/Slow)' : 'FAILED'}\n\n`;
+
+    if (isSuccess) {
+      context += "NOTE: This pipeline PASSED successfully, but was flagged for anomalies (like extreme slowness).\n" +
+        "Do NOT say the pipeline failed. Explain why it was anomalous/slow.\n\n";
+    }
 
     // 1. Patterns
     if (bundle.patterns.length > 0) {
@@ -90,20 +97,5 @@ export class AiService {
     return context;
   }
 
-  // Legacy method (keep for backward compatibility if needed, or deprecate)
-  async generateSummary(prompt: string): Promise<string> {
-    // ... implementation ...
-    if (!config.GOOGLE_API_KEY) {
-      throw new Error('AI service is not configured on the server.');
-    }
-    const model = this.genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
-      generationConfig: {
-        responseMimeType: "application/json"
-      }
-    });
-    // ... rest of legacy method logic if needed, but for now we can simplify or just wrap the new one
-    const result = await model.generateContent(prompt);
-    return result.response.text();
-  }
+
 }

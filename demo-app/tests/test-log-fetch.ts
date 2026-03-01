@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const octokit = new Octokit({
-    auth: process.env.GITHUB_TOKEN, // Make sure this is in your .env
+    auth: process.env.GITHUB_TOKEN, // Requires GITHUB_TOKEN in .env
 });
 
 async function testFetch() {
@@ -34,7 +34,7 @@ async function testFetch() {
         console.log(`Targeting Job ID: ${jobId} (${failedJob ? "FAILED" : "SUCCESS"})`);
 
         // 2. Download the logs
-        // Note: This endpoint often redirects to a raw URL
+        // This endpoint often redirects to a raw URL
         const response = await octokit.rest.actions.downloadJobLogsForWorkflowRun({
             owner: OWNER,
             repo: REPO,

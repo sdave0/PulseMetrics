@@ -1,6 +1,6 @@
 import { MetricsRepository } from '../repository';
 import { MetricsPayload, Workflow, WorkflowRunRow, Job, RunsTableRow, RunChartData } from '../types';
-import { safeDuration, safeString, safeDate } from '../utils';
+import { safeDuration, safeString, safeDate, inferJobCategory } from '../utils';
 import { SignalOrchestrator } from '../signals/SignalOrchestrator';
 import { Signal } from '../signals/SignalTypes';
 
@@ -19,15 +19,7 @@ const RUNNER_COSTS_PER_MINUTE: Record<string, number> = {
   'unknown': 0.008
 };
 
-function inferJobCategory(name: string): string {
-  const n = name.toLowerCase();
-  if (n.includes('test') || n.includes('spec') || n.includes('e2e')) return 'test';
-  if (n.includes('build') || n.includes('compile') || n.includes('pack')) return 'build';
-  if (n.includes('lint') || n.includes('format') || n.includes('check')) return 'lint';
-  if (n.includes('deploy') || n.includes('publish') || n.includes('release')) return 'deploy';
-  if (n.includes('install') || n.includes('setup') || n.includes('dep')) return 'dependency';
-  return 'unknown';
-}
+
 
 export class MetricsService {
 
@@ -168,7 +160,7 @@ export class MetricsService {
     const historicalRuns = rows.slice(1);
 
     // 2. Reconstruct MetricsPayload
-    // We map DB columns back to the payload structure expected by SignalOrchestrator
+    // Map DB columns back to the payload structure expected by SignalOrchestrator
     const payload: MetricsPayload = {
       workflow: {
         run_id: Number(targetRun.run_id || runId), // Fallback if run_id missing in row but passed in arg
@@ -234,7 +226,7 @@ export class MetricsService {
     // Ideally we should use an upsert or delete-insert.
 
     // We'll trust saveSignal to handle basic insertion.
-    // We should probably check if we need to set 'decision' signal too? 
+    // Check if we need to set 'decision' signal too
     // Manual trigger might bypass the decision engine, but let's assume we just want the 'ai_analysis' signal.
 
     await repo.saveSignal(

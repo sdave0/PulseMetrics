@@ -42,14 +42,7 @@ export const fetchJobBreakdown = async (pipeline?: string, runId?: number): Prom
     return response.data;
 };
 
-export const generateAiSummary = async (prompt: string): Promise<AiReport> => {
-    const response = await api.post<{ summary: string }>('/api/generate-summary', { prompt });
-    if (response.data && response.data.summary) {
-        try {
-            return JSON.parse(response.data.summary);
-        } catch {
-            return { summary: response.data.summary };
-        }
-    }
-    return { summary: "No summary generated." };
+export const triggerAnalysis = async (runId: number): Promise<AiReport> => {
+    const response = await api.post<AiReport>(`/api/analyze/${runId}`);
+    return response.data;
 };

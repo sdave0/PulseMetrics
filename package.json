@@ -1,4 +1,10 @@
 {
+  "name": "pulse-ai-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/dev.js"
+  },
   "dependencies": {
     "axios": "^1.13.2"
   }

@@ -18,7 +18,6 @@ router.get('/api/jobs/trends', (req, res) => controller.getJobTrends(req, res));
 
 // AI
 // AI
-router.post('/api/generate-summary', (req, res) => controller.generateAiSummary(req, res));
 router.post('/api/analyze/:runId', (req, res) => controller.triggerAnalysis(req, res));
 
 // Signals (Phase 1)

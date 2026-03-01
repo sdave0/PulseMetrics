@@ -87,6 +87,7 @@ export class SignalOrchestrator {
         const bundle: SignalBundle = {
             runId: payload.workflow.run_id,
             workflowName: payload.workflow.name,
+            status: payload.workflow.status,
             patterns,
             drift,
             changes,

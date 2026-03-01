@@ -1,4 +1,5 @@
 import { PatternSignal, SignalContext } from './SignalTypes';
+import { inferJobCategory } from '../utils';
 
 /**
  * PatternProcessor
@@ -9,18 +10,6 @@ import { PatternSignal, SignalContext } from './SignalTypes';
  */
 export class PatternProcessor {
 
-    /**
-     * Infer job category from job name
-     */
-    private inferJobCategory(name: string): 'test' | 'build' | 'lint' | 'deploy' | 'dependency' | 'unknown' {
-        const n = name.toLowerCase();
-        if (n.includes('test') || n.includes('spec') || n.includes('e2e')) return 'test';
-        if (n.includes('build') || n.includes('compile') || n.includes('pack')) return 'build';
-        if (n.includes('lint') || n.includes('format') || n.includes('check')) return 'lint';
-        if (n.includes('deploy') || n.includes('publish') || n.includes('release')) return 'deploy';
-        if (n.includes('install') || n.includes('setup') || n.includes('dep')) return 'dependency';
-        return 'unknown';
-    }
 
     /**
      * Detect failure type from job status and name
@@ -48,7 +37,7 @@ export class PatternProcessor {
         const { currentRun } = context;
 
         for (const job of currentRun.jobs) {
-            const category = this.inferJobCategory(job.name);
+            const category = inferJobCategory(job.name);
             const failureType = this.detectFailureType(job.name, job.status);
 
             const signal: PatternSignal = {

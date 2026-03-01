@@ -10,7 +10,7 @@ const envSchema = z.object({
   PG_PASSWORD: z.string().default('password'),
   PG_PORT: z.string().default('5432').transform(Number),
   GOOGLE_API_KEY: z.string().optional(),
-  LLM_MODEL: z.string().default('gemini-2.5-flash'),
+  LLM_MODEL: z.string().default('gemini-3-flash-preview'),
 });
 
 export const config = envSchema.parse(process.env);

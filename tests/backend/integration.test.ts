@@ -23,7 +23,7 @@ jest.mock('../../metrics-collector/src/services/AiService', () => {
     return {
         AiService: jest.fn().mockImplementation(() => {
             return {
-                generateSummary: jest.fn()
+                analyzeFailure: jest.fn()
             };
         })
     };

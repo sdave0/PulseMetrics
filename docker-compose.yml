@@ -45,6 +45,8 @@ services:
 
 volumes:
   postgres-data:
+    external: true
+    name: ci-pipeline_postgres-data
 
 
 networks:

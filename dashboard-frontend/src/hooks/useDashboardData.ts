@@ -5,7 +5,7 @@ import {
   fetchRunsTable,
   fetchDurationAnalysis,
   fetchJobBreakdown,
-  generateAiSummary
+  triggerAnalysis
 } from '../services/api';
 
 import type {
@@ -117,27 +117,12 @@ export const useDashboardData = () => {
     setIsAiLoading(true);
     setAiError('');
 
-    const prompt = `
-      You are a Senior DevOps Engineer analyzing a CI/CD pipeline regression.
-      
-      Context:
-      - Pipeline: "${jobBreakdownData.pipeline_name}"
-      - Commit: "${jobBreakdownData.commit_message}"
-      
-      Job Breakdown & Heuristics:
-      ${JSON.stringify(jobBreakdownData.jobs, null, 2)}
-
-      Task:
-      1. Root Cause: Start with a single, punchy summary sentence. Then, list contributing factors as bullet points (-).
-      2. Remediation: Provide a bulleted list (-) of specific actions.
-      3. Style: Be concise. Use short bullets. No fluff.
-      4. Heuristics:
-         - If lockfile changed + slow build -> Suggest dependency cache miss.
-         - If test count up -> Suggest new tests are slow.
-    `;
-
     try {
-      const result = await generateAiSummary(prompt);
+      // Use the active runId if available, otherwise try to extract it from the UI or fail safely.
+      const targetRunId = selectedRunId || (filteredRuns.length > 0 ? filteredRuns[0].run_id : null);
+      if (!targetRunId) throw new Error("No run ID selected for analysis.");
+
+      const result = await triggerAnalysis(targetRunId);
       setAiReport(result);
     } catch (err: unknown) {
       console.error("AI Analysis Error:", err);

@@ -2,6 +2,10 @@
 **Date:** February 4, 2026
 **Focus:** Agentic RCA Integration, Manual Trigger Refactor, and Robustness Improvements.
 
+## February 28, 2026 Update
+* Added `agent-skills` related directories to `.gitignore`.
+* Removed conversational and over-explanatory comments from multiple files across `pulse-action`, `metrics-collector`, and `demo-app` to maintain a professional codebase standard.
+
 ## February 19, 2026 Update
 * Analyzed `metrics-collector` and `dashboard-frontend` in `PulseAI/ci-pipeline`
 * Documented key architectural features (Agentic RCA, Signal Extraction, Event-driven DB, React Dashboard)
@@ -14,7 +18,7 @@
     2.  Reconstructs a `MetricsPayload`.
     3.  Runs the `SignalOrchestrator` to generate signals on the fly.
     4.  Persists them to the `signals` table.
-*   **Model Configuration**: Centralized LLM model selection in `config.ts`. Added `LLM_MODEL` env var support (default updated to `gemini-2.5-flash`).
+*   **Model Configuration**: Centralized LLM model selection in `config.ts`. Added `LLM_MODEL` env var support (default updated to `gemini-3-flash-preview`).
 
 ## 2. Issues Encountered & Fixes
 

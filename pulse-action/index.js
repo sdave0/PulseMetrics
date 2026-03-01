@@ -86,7 +86,7 @@ async function run() {
     const allArtifacts = artifactsResponse.data.artifacts;
 
     // --- 3. ARTIFACT DOWNLOAD & EXTRACTION ---
-    // We create a temporary directory for artifacts
+    // Create a temporary directory for artifacts
     const artifactDir = path.join(process.cwd(), 'pulse_artifacts');
     if (!fs.existsSync(artifactDir)) {
         fs.mkdirSync(artifactDir);
@@ -175,7 +175,7 @@ async function run() {
     });
 
     // 4.2 Test Summary (Generic Search)
-    // We look for any file named 'test-results.json' in the artifacts
+    // Look for any file named 'test-results.json' in the artifacts
     payload.test_summary = null;
     
     // Strategy: Look in specific extracted folders matching known patterns

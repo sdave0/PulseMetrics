@@ -120,23 +120,7 @@ export class MetricsController {
     }
   }
 
-  async generateAiSummary(req: Request, res: Response) {
-    // Deprecated legacy endpoint - kept for backward compatibility if needed
-    // but we prefer specific analysis now.
-    const { prompt } = req.body;
-    if (!prompt) {
-      return res.status(400).send({ error: 'Prompt is required.' });
-    }
 
-    try {
-      const summary = await aiService.generateSummary(prompt);
-      res.status(200).json({ summary });
-    } catch (error: unknown) {
-      const msg = `Error calling AI service: ${error instanceof Error ? error.message : String(error)}`;
-      console.error(msg);
-      res.status(500).send({ error: `AI Service Error: ${error instanceof Error ? error.message : String(error)}` });
-    }
-  }
 
   async triggerAnalysis(req: Request, res: Response) {
     const runId = parseInt(req.params.runId, 10);
@@ -156,7 +140,7 @@ export class MetricsController {
 
       if (analysis) {
         // 3. Persist the new analysis so it shows up in dashboard
-        // We need a method in MetricsService to save just the AI signal
+        // Save just the AI signal
         await metricsService.saveAiAnalysis(runId, analysis);
         res.status(200).json(analysis);
       } else {
