@@ -32,17 +32,10 @@ jobs:
         uses: tj-actions/changed-files@v44
         with:
           files: |
-            src/**
-            public/**
-            dashboard-frontend/**
-            metrics-collector/**
-            *.json
-            *.js
-            *.ts
-            Dockerfile
-            .dockerignore
-            index.html
-            .github/workflows/**
+            **
+            !kubernetes/deployment.yaml
+            !README.md
+            !docs/**
 
   test:
     name: Unit Testing
