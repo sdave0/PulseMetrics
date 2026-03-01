@@ -60,3 +60,48 @@ export interface AiReport {
     relevant_files?: string[];
     summary?: string;
 }
+
+export interface Signal {
+    type: 'pattern' | 'drift' | 'change' | 'recurrence' | 'decision' | 'ai_analysis';
+    name: string;
+    confidence: number;
+    timestamp: Date;
+}
+
+export interface PatternSignal extends Signal {
+    type: 'pattern';
+    category: 'test' | 'build' | 'lint' | 'deploy' | 'dependency' | 'unknown';
+    failureType?: 'timeout' | 'oom' | 'flaky' | 'dependency' | 'unknown';
+    jobName: string;
+    status: string | null;
+}
+
+export interface DriftSignal extends Signal {
+    type: 'drift';
+    metric: 'duration' | 'job_duration';
+    currentValue: number;
+    baselineValue: number;
+    percentChange: number;
+    isAnomaly: boolean;
+    jobName?: string;
+}
+
+export interface ChangeSignal extends Signal {
+    type: 'change';
+    changeType: 'lockfile' | 'test_count' | 'code_churn';
+    description: string;
+    impact: 'low' | 'medium' | 'high';
+    metadata: {
+        filesChanged?: number;
+        testCountDelta?: number;
+        lockfileChanged?: boolean;
+    };
+}
+
+export interface AiAnalysisResult {
+    root_cause: string;
+    confidence: 'high' | 'medium' | 'low';
+    remediation: string;
+    relevant_files: string[];
+    summary: string;
+}
