@@ -1,5 +1,5 @@
 # Build stage
-FROM node:20-alpine AS build
+FROM node:lts-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -7,10 +7,8 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM nginx:1.25-alpine
-
-RUN apk update && apk upgrade
-
+FROM nginx:stable-alpine
+RUN apk update && apk upgrade --no-cache && apk add --no-cache libpng
 # Copy the build output from the build stage
 COPY --from=build /app/dist /usr/share/nginx/html
 
